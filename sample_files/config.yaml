@@ -1,0 +1,226 @@
+#### configuration for the verification run
+general:
+
+  # define which of the 5 steps to run; each step can be run independently, 
+  # assuming data from previous steps (from previous runs) are available for use
+  steps:
+    fetch_fcst_data: True
+    fetch_obs_data: True
+    pair_data: True
+    compute_metrics: True
+    plot_metrics: True
+
+  # user-specified name for the set of locations to carry out verification for
+  # this name is used to create a folder in 'data_dir_root' (in 'file_paths' section) to store all the datasets and outputs
+  # see function 'data_paths' in ngen-verf/src/ngen/verf/settings.py to see how the overall data directory structure is defined
+  location_set_name: "calib_basin_group1"
+
+  # list of usgs gage IDs or NWM links IDs; if blank, a location_list_file must be provided in 'file_paths' section
+  location_list:  
+  # must be specified if locaiton_list is not blank; currently supported options: usgs_gage, nwm_link
+  location_type:  
+
+  variable_name: streamflow # currently only option is 'streamflow'
+  nwm_configuration:  short_range  # e.g., analysis_assim, short_range, analysis_assim_hawaii, medium_range_mem1
+
+  # user-specified name of datasets for comparison (to be used in create sub-folders for datasets and plots)
+  dataset_name: ['v3_sep', 'v3_oct']    
+
+  # list of NWM versions; list must have of the same length as 'dataset_name' 
+  # Currently accepts "nwm22" or "nwm30"; Use "nwm22" for dates prior to 09-19-2023
+  nwm_version: ['nwm30', 'nwm30'] 
+
+  # list of start/end dates for forecast verification period; list must have of the same length as 'dataset_name' 
+  forecast_start_date: ['2024-09-01', '2024-10-01']
+  forecast_end_date: ['2024-09-30', '2024-10-31']
+
+#### configurations for various file paths
+# see some sample files at ngen-verf/sample_files/gage_files
+file_paths:
+
+  # root directory to store the downloaded NWM forecast and flow observation data
+  data_dir_root: /home/yuqiong.liu/work/data/ngen-verf
+
+  # tab-delimited csv file, which must contain either a "gage" or "link" column specifying the locations to conduct verification for
+  # currently assuming NWM links (feature_id) are the same for all NWM versions
+  location_list_file: /home/yuqiong.liu/work/data/ngen-verf/usgs_gages_link_CONUS_calib100.csv
+
+  # parquet file containing the crosswalk between NWMv3 feature_id and usgs gage id
+  # see utils/create_crosswalk.py on how the sample crosswalk parquet was created
+  crosswalk_file: /home/yuqiong.liu/work/data/ngen-verf/crosswalks/usgs_nwm30_crosswalk_CONUS.parquet
+
+  # meta data for USGS gages
+  gage_meta_file: /home/yuqiong.liu/work/data/ngen-verf/gages_metadata_all_domains.csv
+
+  # geometry (point lat/lon) for USGS gages; see utils/create_geometry.py on how the sample geometry parquet was created
+  geometry_file: /home/yuqiong.liu/work/data/ngen-verf/geometry/usgs_point_geometry_CONUS.parquet
+
+#### configurations for retrieving NWM forecast data (typically no need to change)
+nwm_forecast: 
+  output_type: channel_rt 
+  t_minus: [0, 1, 2]  # Only used if an assimilation run is selected
+  data_source: GCS    # Specifies the remote location from which to fetch the data ("GCS", "NOMADS", "DSTOR")
+  kerchunk_method: local  # When data_source = "GCS", specifies the preference in creating Kerchunk reference json files.
+                          # "local" - always create new json files from netcdf files in GCS and save locally, if they do not already exist
+                          # "remote" - read the CIROH pre-generated jsons from s3, ignoring any that are unavailable
+                          # "auto" - read the CIROH pre-generated jsons from s3, and create any that are unavailable, storing locally
+
+  process_by_z_hour: True  # If True, NWM files will be processed by z-hour per day. If False, files will be
+                         # processed in chunks (defined by STEPSIZE). This can help if you want to read many reaches
+                         # at once (all ~2.7 million for medium range for example).
+
+  stepsize: 100  # Only used if PROCESS_BY_Z_HOUR = False. Controls how many files are processed in memory at once
+                # Higher values can increase performance at the expense on memory  (default value: 100)
+
+  ignore_missing_file: False  # If True, the missing file(s) will be skipped and the process will resume
+                           # If False, TEEHR will fail if a missing NWM file is encountered
+
+  overwrite_output: False  # If True, existing output files will be overwritten; if False, existing files are retained
+
+#### configurations for retrieving streamflow observation data (currently only usgs is supported)
+#### typically no need to change selections in this section
+flow_observation: 
+  usgs: # flow obs retrieved will be stored at [data_dir_root]/[location_set_name]/usgs
+    chunk_by: month   # data are saved in parquet files by month
+    overwrite_output: False  # If True, existing output files will be overwritten; if False, existing files are retained
+
+#### paired data generation
+pair_data:
+
+  # whether to overwrite existing joined parquet files
+  overwrite: False
+
+#### configuration for metrics calculation
+metrics:
+
+  # whether to overwrite existing metric files
+  overwrite: True
+
+  # library to be used for metric calculation; currently supported options: teehr, ngen.eval
+  # see the lists of supported metrics toward the end of sample config.yaml file (also ngen-verf/src/ngen/verf/settings.py)
+  # note some metrics available in ngen.eval (e.g., event-based metrics) take longer to compute
+  library: 'ngen.eval'  
+
+  # list of metrics to be calculated 
+  # if set to 'all', all available metrics will be calculated
+  metric_subset: ['KGE','NSE','CORR','NNSE']
+
+  # non-exceedance probabily threhold of streamflow to be used for categorical metrics in ngen.eval
+  flow_threshold_categorical: 0.9  
+
+  # non-exceedance probabily threhold of streamflow to be used for event-based metrics in ngen.eval
+  flow_threshold_event: 0.9  
+
+  # list of lead times (in hours) for which metrics should be calculated for
+  # if set to 'all', all native lead times will be calculated
+  lead_times: [1,3,5,10]
+  #lead_times: 'all'
+
+  # TODO
+  # list of lead time intervals (in hours) or 'all' for which metrics should be calculated for
+  # if the list containts 'all', the maximum interval will used (i.e., metrics are calcualted using all lead times )
+  # For example, if lead_time_intervals is set to [1,3,5,'all'] for short_range, the following lead time groups will be used:
+  # 1) h1, h2, ..., h17, h18
+  # 2) h1-3, h4-6, h7-9, h10-12, h13-15, h16-18
+  # 3) h1-5, h6-10, h11-15
+  # 4) h1-18
+  #lead_time_intervals: [1,3,5,'all']
+
+#### configuration for plots
+# For each type of plots (histogram, boxplot, spatial map), 
+#   1) 'metric_subset' must be a subset of metrics defined for calculation (i.e., 'metric_subset' defined in Section 'metrics')
+#   2) 'lead_times' must be a subset of lead times defined for metrics calculation (i.e., 'lead_times' defined in Section 'metrics')
+# For sample plots, check out sample_files/metric_plots 
+plots:
+  histogram:
+
+    # whether to create histogram plots
+    plot: True
+
+    # list of metrics to create histogram plots for
+    # see 'metric_value_bins' defined in ngen-verf/src/ngen/verf/settings.py for bins used for binning each metric
+    # currently supported metrics: 'KGE','NSE','CORR','NNSE'. 
+    # expand 'metric_value_bins' to support additional metrics
+    metric_subset: ['KGE','NSE','CORR','NNSE'] 
+
+    # list of lead times (in hours) to create boxplots for
+    lead_times: [1,3,5,10]
+
+  boxplot:
+    plot: True
+    metric_subset: ['KGE','NSE','CORR','NNSE']
+    lead_times: [1,3,5,10]
+
+  spatial_map:
+    plot: True
+    # list of metrics to create spatial maps for
+    # color maps and color scales for the spatial maps are defined by 'metric_colors' in ngen-verf/src/ngen/verf/settings.py
+    # expand 'metric_colors' to support additional metrics
+    metric_subset: ['KGE','NSE','CORR','NNSE']
+
+    lead_times: [1,3,5,10]
+
+    # executable path for geckodriver (use 'which geckodriver' to find out that in your system)
+    geckodriver_path: /snap/bin/geckodriver
+                  
+#--------- List of currently supported metrics for teehr and ngen.eval -----------
+# both short and long names of the metrics are accepted
+#
+### supported metrics for teehr
+    # 'n_obs': 'primary_count', 
+    # 'n_mod': 'secondary_count',
+    # 'min_obs': 'primary_minimum', 
+    # 'min_mod': 'secondary_minimum', 
+    # 'max_obs': 'primary_maximum',
+    # 'max_mod': 'secondary_maximum', 
+    # 'mean_obs': 'primary_average', 
+    # 'mean_mod': 'secondary_average',
+    # 'sum_obs': 'primary_sum', 
+    # 'sum_mod': 'secondary_sum', 
+    # 'var_obs': 'primary_variance',
+    # 'var_mod': 'secondary_variance', 
+    # 'max_delta': 'max_value_delta', 
+    # 'NSE': 'nash_sutcliffe_efficiency',
+    # 'NNSE': 'nash_sutcliffe_efficiency_normalized', 
+    # 'KGE': 'kling_gupta_efficiency',
+    # 'KGE1': 'kling_gupta_efficiency_mod1', 
+    # 'KGE2': 'kling_gupta_efficiency_mod2',
+    # 'ME': 'mean_error', 
+    # 'MAE': 'mean_absolute_error', 
+    # 'MSE': 'mean_squared_error',
+    # 'RMSE': 'root_mean_squared_error',
+    # 'pt_obs': 'primary_max_value_time',
+    # 'pt_mod': 'secondary_max_value_time', 
+    # 'pt_err': 'max_value_timedelta',
+    # 'RBIAS': 'relative_bias',
+    # 'MBAIS': 'multiplicative_bias', 
+    # 'RMAE': 'mean_absolute_relative_error',
+    # 'CORR': 'pearson_correlation',
+    # 'sCORR': 'spearman_correlation',    
+    # 'R2': 'r_squared', 
+    # 'aprBIAS': 'annual_peak_relative_bias',
+
+
+##### supported metrics for ngen.eval
+    # 'CORR': 'pearson correlation',
+    # 'NSE': 'nash_sutcliffe_efficiency',
+    # 'NNSE': 'nash_sutcliffe_efficiency_normalized', 
+    # 'NSElog': "logrithmic nash_sutcliffe_efficiency",
+    # 'NSEwt': 'weighted NSE and NSElog',
+    # 'KGE': 'kling_gupta_efficiency',
+    # 'MAE': 'mean_absolute_error', 
+    # 'RMSE': 'root_mean_squared_error',
+    # 'PBIAS': 'percent_bias',
+    # 'RSR': 'RMSE_observation_std_ratio',
+    # 'HSEG_FDC': 'pbias_high_flow_FDC',
+    # 'MSEG_FDC': 'pbias_medium_flow_FDC',
+    # 'LSEG_FDC': 'pbias_low_flow_FDC',
+    # 'POD': 'probability_of_detection',
+    # 'FAR': 'false_alarm_ratio',
+    # 'CSI': 'critical_success_index',
+    # 'FBIAS': 'frequency_bias',
+    # 'PKBIAS': 'percent_peak_flow_bias',
+    # 'PKTE': 'peak_timing_error',
+    # 'EVBIAS': 'event_volume_bias',
+
+
