@@ -59,3 +59,46 @@ python [NGEN_VERF_ROOT]/ngen-verf/verification.py config.yaml
 ```
 
 3) repeat the first two steps as many times as needed
+
+
+## Docker container
+
+### Requirements
+
+To build and run ngen-fcst, you will need the following software installed and running on your system:
+- Docker Engine
+
+You will also need the following data:
+- a GitLab Personal Access Token (PAT)
+
+### Build
+
+To build the ngen-verf container, execute the following command:
+```
+GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-verf .
+```
+
+### Running
+
+To run the ngen-verf applicaton, execute the following command:
+```
+docker run ngen-verf
+```
+
+This will print a usage statement for the container:
+```
+Usage: run-ngen-verf.sh <command> <config_file> [stdout_file]
+
+
+COMMAND:
+  verification          Run verification script.
+
+CONFIG_FILE: Path to the config yaml file for a verification run.
+STDOUT_FILE (optional): Path to the stdout file where the script's console output will be saved.
+
+Examples:
+  run-ngen-verf.sh verification test_data/verf_config.yaml
+  run-ngen-verf.sh verification test_data/verf_config.yaml /path/to/output/ngen-verf.log
+```
+
+The path provided for any files should match the path within the container, as well as the paths inside your configuration file.
