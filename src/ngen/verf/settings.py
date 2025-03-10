@@ -1,21 +1,79 @@
 from pathlib import Path
 import colorcet as cc
+import logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
-# color maps for each metric for creating the spatial maps (in create_plots.py)
-metric_colors=dict(
-    KGE  = {'cmap': cc.rainbow[::-1], 'clim': (-0.5,1)},  
-    NSE  = {'cmap': cc.rainbow[::-1], 'clim': (-0.5,1)},   
-    CORR = {'cmap': cc.rainbow[::-1], 'clim': (-0.5,1)},     
-    NNSE = {'cmap': cc.rainbow[::-1], 'clim': (0,1)}, 
-)
 
 # bins for each metric for creating the histograms (in create_plots.py)
-metric_value_bins = {
+metric_value_bins_default = {
     'KGE': [float('-inf'), -1,-0.5,0,0.2,0.4,0.6,0.8,1.0],
     'NSE': [float('-inf'), -1,-0.5,0,0.2,0.4,0.6,0.8,1.0],
     'NNSE': [0,0.2,0.4,0.5,0.6,0.7,0.8,1.0],
     'CORR': [-1,-0.5,0,0.2,0.4,0.6,0.8,1.0],
 }
+
+# color maps for each metric for creating the spatial maps (in create_plots.py)
+metric_color_scale_default = dict(
+    KGE  = (-0.5,1),  
+    NSE  = (-0.5,1),   
+    CORR = (-0.5,1),     
+    NNSE = (0,1), 
+)
+
+# define different groups of metrics
+metric_groups = dict(
+    higher_is_better = ['CORR','sCORR','NSE','NNSE','NSElog','NSEwt','KGE','KGE1','KGE2','POD','CSI',
+        'n_obs','n_mod','min_obs','min_mod','max_obs','max_mod','mean_obs','mean_mod','sum_obs','sum_mod','pt_obs','pt_mod'],
+    lower_is_better = ['ME','MAE','MSE','RMSE','RMAE','PBIAS','RBIAS','MBAIS','aprBIAS','R2R','SR',
+        'HSEG_FDC','MSEG_FDC','LSEG_FDC','FAR','FBIAS','PKBIAS','PKTE','EVBIAS',
+        'var_obs','var_mod','max_delta','pt_err'],
+    abs_applicable = ['ME','PBIAS','HSEG_FDC','MSEG_FDC','LSEG_FDC']
+)
+
+# function to define the colormaps and scaling of spatial maps
+def get_metric_colormap(conf:dict) -> dict: 
+
+    metric_cmaps = dict()
+    for m1 in conf['metric_subset']:
+
+        metric_cmaps[m1] = dict()
+        
+        # define scale
+        if 'scaling' in conf.keys() and m1 in conf['scaling'] and conf['scaling'][m1] is not None:
+            metric_cmaps[m1]['clim'] = tuple(conf['scaling'][m1])
+        elif m1 in metric_color_scale_default.keys():
+            metric_cmaps[m1]['clim'] = metric_color_scale_default[m1]
+        else:
+            logger.info(f'scaling not defined for {m1}')
+            metric_cmaps[m1]['clim'] = (float('nan'), float('nan'))
+
+        # define color maps    
+        if m1 in metric_groups['higher_is_better']:
+            metric_cmaps[m1]['cmap'] = cc.rainbow[::-1]
+        elif m1 in metric_groups['lower_is_better']:
+            metric_cmaps[m1]['cmap'] = cc.rainbow
+        else:
+            logger.info(f'scaling not defined for {m1}; set to default (rainbow)')
+    
+    return metric_cmaps
+
+# function to define the binnings for creating the histograms
+def get_metric_bins(conf:dict) -> dict: 
+
+    metric_bins = dict()
+    for m1 in conf['metric_subset']:
+        if 'binning' in conf.keys() and m1 in conf['binning'] and conf['binning'][m1] is not None:
+            bins = conf['binning'][m1]
+            bins = [float(x.lower()) if type(x) is str else x for x in bins]
+            metric_bins[m1] = bins
+        elif m1 in metric_value_bins_default.keys():
+            metric_bins[m1] = metric_value_bins_default[m1]
+        else:
+            raise ValueError(f'binning is not defined for {m1}')
+    
+    return metric_bins
+
 
 dict_teehr_metrics = {
     'n_obs': 'primary_count', 
@@ -116,7 +174,12 @@ def data_paths(conf:dict) -> dict:
     plot_dir = Path(root_dir, sub_dir, 'plots')
 
     # path for crosswalk file
-    cwt_file = Path(conf2['crosswalk_file']).resolve(strict=True)
+    cwt_file = dict()
+    for ver1 in list(set(conf1['nwm_version'])):
+        if ver1 in conf2['crosswalk_file'].keys():
+            cwt_file[ver1] = Path(conf2['crosswalk_file'][ver1])
+        else:
+            raise Exception(f'crosswalk file not found for {ver1}')
 
     # path for geometry file
     geo_file = Path(conf2['geometry_file']).resolve(strict=True)
