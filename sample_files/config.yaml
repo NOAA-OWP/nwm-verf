@@ -5,10 +5,10 @@ general:
   # assuming data from previous steps (from previous runs) are available for use
   steps:
     fetch_fcst_data: True
-    fetch_obs_data: False
-    pair_data: False
-    compute_metrics: False
-    plot_metrics: False
+    fetch_obs_data: True
+    pair_data: True
+    compute_metrics: True
+    plot_metrics: True
 
   # user-specified name for the set of locations to carry out verification for
   # this name is used to create a folder in 'data_dir_root' (in 'file_paths' section) to store all the datasets and outputs
@@ -96,7 +96,7 @@ flow_observation:
 pair_data:
 
   # whether to overwrite existing joined parquet files
-  overwrite: False
+  overwrite: True
 
 #### configuration for metrics calculation
 metrics:
