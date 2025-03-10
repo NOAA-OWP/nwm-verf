@@ -11,7 +11,8 @@ ENV PATH="/usr/local/bin:$PATH"
 # https://github.com/docker-library/python/pull/570
 ENV LANG="C.UTF-8"
 
-ENV PYTHON_VERSION="3.10.14"
+ARG PYTHON_VERSION="3.10.14"
+ARG GECKODRIVER_VERSION="0.36.0"
 
 # install runtime dependencies
 RUN set -eux; \
@@ -23,6 +24,7 @@ RUN set -eux; \
         curl curl-devel \
         file \
         findutils \
+        firefox \
         git \
 ## FIXME: replace GNU compilers with Intel compiler ##
         gcc-toolset-10 \
@@ -45,35 +47,35 @@ RUN set -eux; \
 SHELL [ "/usr/bin/scl", "enable", "gcc-toolset-10"]
 
 RUN set -eux; \
-	\
-	curl --location --output python.tar.xz "https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tar.xz"; \
-	mkdir --parents /usr/src/python; \
-	tar --extract --directory /usr/src/python --strip-components=1 --file python.tar.xz; \
-	rm python.tar.xz; \
-	\
-	cd /usr/src/python; \
-	./configure \
-		--enable-loadable-sqlite-extensions \
-		--enable-optimizations \
-		--enable-option-checking=fatal \
-		--enable-shared \
-		--with-lto \
-		--with-system-expat \
-		--without-ensurepip \
-	; \
-	nproc="$(nproc)"; \
-	make -j "$nproc" \
-		"PROFILE_TASK=${PROFILE_TASK:-}" \
-	; \
+    \
+    curl --location --output python.tar.xz "https://www.python.org/ftp/python/${PYTHON_VERSION%%[a-z]*}/Python-$PYTHON_VERSION.tar.xz"; \
+    mkdir --parents /usr/src/python; \
+    tar --extract --directory /usr/src/python --strip-components=1 --file python.tar.xz; \
+    rm python.tar.xz; \
+    \
+    cd /usr/src/python; \
+    ./configure \
+        --enable-loadable-sqlite-extensions \
+        --enable-optimizations \
+        --enable-option-checking=fatal \
+        --enable-shared \
+        --with-lto \
+        --with-system-expat \
+        --without-ensurepip \
+    ; \
+    nproc="$(nproc)"; \
+    make -j "$nproc" \
+        "PROFILE_TASK=${PROFILE_TASK:-}" \
+    ; \
 # https://github.com/docker-library/python/issues/784
 # prevent accidental usage of a system installed libpython of the same version
-	rm python; \
-	make -j "$nproc" \
-		"LDFLAGS=${LDFLAGS:--Wl},-rpath='\$\$ORIGIN/../lib'" \
-		"PROFILE_TASK=${PROFILE_TASK:-}" \
-		python \
-	; \
-	make install; \
+    rm python; \
+    make -j "$nproc" \
+        "LDFLAGS=${LDFLAGS:--Wl},-rpath='\$\$ORIGIN/../lib'" \
+        "PROFILE_TASK=${PROFILE_TASK:-}" \
+        python \
+    ; \
+    make install; \
 # enable GDB to load debugging data: https://github.com/docker-library/python/pull/701
     bin="$(readlink -ve /usr/local/bin/python3)"; \
     dir="$(dirname "$bin")"; \
@@ -96,12 +98,20 @@ RUN set -eux; \
 
 # make some useful symlinks that are expected to exist ("/usr/local/bin/python" and friends)
 RUN set -eux; \
-	for src in idle3 pydoc3 python3 python3-config; do \
-		dst="$(echo "$src" | tr -d 3)"; \
-		[ -s "/usr/local/bin/$src" ]; \
-		[ ! -e "/usr/local/bin/$dst" ]; \
-		ln -svT "$src" "/usr/local/bin/$dst"; \
-	done
+    for src in idle3 pydoc3 python3 python3-config; do \
+        dst="$(echo "$src" | tr -d 3)"; \
+        [ -s "/usr/local/bin/$src" ]; \
+        [ ! -e "/usr/local/bin/$dst" ]; \
+        ln -svT "$src" "/usr/local/bin/$dst"; \
+    done
+
+# Install GeckoDriver
+# This is used for browser-based generation of plots in PNG format
+RUN set -eux; \
+    \
+    curl --location --output geckodriver.tar.gz "https://github.com/mozilla/geckodriver/releases/download/v${GECKODRIVER_VERSION%%[a-z]*}/geckodriver-v${GECKODRIVER_VERSION%%[a-z]*}-linux64.tar.gz" ; \
+    tar --extract --directory /usr/local/bin --file geckodriver.tar.gz; \
+    rm geckodriver.tar.gz
 
 RUN --mount=type=secret,id=GITLAB_TOKEN \ 
     set -eux; \
@@ -116,26 +126,26 @@ ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
 
 ARG NGEN_EVAL_TAG=development
 RUN set -eux; \
-	\
+    \
     git clone -b ${NGEN_EVAL_TAG} https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-eval.git /ngen-app/ngen-eval ; \
     rm --force /root/.gitconfig
 
 WORKDIR /ngen-app/ngen-eval/
 RUN set -eux; \
-	\
+    \
     pip3 install . ; \
     pip3 cache purge
 
 COPY . /ngen-app/ngen-verf/
 WORKDIR /ngen-app/ngen-verf/
 RUN set -eux; \
-	\
+    \
     pip3 install . ; \
     pip3 cache purge
 
 COPY ./docker/run-ngen-verf.sh /ngen-app/bin/
 RUN set -eux; \
-	\
+    \
     chmod +x /ngen-app/bin/run-ngen-verf.sh
 
 WORKDIR /
