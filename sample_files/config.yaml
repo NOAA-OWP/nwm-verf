@@ -13,24 +13,27 @@ general:
   # user-specified name for the set of locations to carry out verification for
   # this name is used to create a folder in 'data_dir_root' (in 'file_paths' section) to store all the datasets and outputs
   # see function 'data_paths' in ngen-verf/src/ngen/verf/settings.py to see how the overall data directory structure is defined
-  location_set_name: "calib_basin_group1"
+  location_set_name: "calib_basin_group3"
 
+  # [optional] but either location_list or location_list_file (in ['file_paths']) must be specifed
   # list of usgs gage IDs or NWM links IDs; if blank, a location_list_file must be provided in 'file_paths' section
-  location_list:  
-  # must be specified if locaiton_list is not blank; currently supported options: usgs_gage, nwm_link
-  location_type:  
+  location_list: 
+
+  # [optional] but must be specified if locaiton_list is not blank; currently supported options: usgs_gage, nwm30_link or nwm22_link 
+  # depending on which NWM versions are listed in ['general'] ['nwm_version']
+  location_type: 
 
   variable_name: streamflow # currently only option is 'streamflow'
   nwm_configuration:  short_range  # e.g., analysis_assim, short_range, analysis_assim_hawaii, medium_range_mem1
 
-  # user-specified name of datasets for comparison (to be used in create sub-folders for datasets and plots)
+  # user-specified name of datasets for comparison (to be used for creating sub-folders for datasets and plots)
   dataset_name: ['v3_sep', 'v3_oct']    
 
-  # list of NWM versions; list must have of the same length as 'dataset_name' 
+  # list of NWM versions; list must have the same length as 'dataset_name' 
   # Currently accepts "nwm22" or "nwm30"; Use "nwm22" for dates prior to 09-19-2023
   nwm_version: ['nwm30', 'nwm30'] 
 
-  # list of start/end dates for forecast verification period; list must have of the same length as 'dataset_name' 
+  # list of start/end dates for forecast verification period; list must have the same length as 'dataset_name' 
   forecast_start_date: ['2024-09-01', '2024-10-01']
   forecast_end_date: ['2024-09-30', '2024-10-31']
 
@@ -41,13 +44,17 @@ file_paths:
   # root directory to store the downloaded NWM forecast and flow observation data
   data_dir_root: /home/yuqiong.liu/work/data/ngen-verf
 
-  # tab-delimited csv file, which must contain either a "gage" or "link" column specifying the locations to conduct verification for
-  # currently assuming NWM links (feature_id) are the same for all NWM versions
+  # [optional] but either location_list (in ['general']) or location_list_file must be specifed
+  # tab or comma delimited csv file, which must contain either a "gage" or 
+  # a "link" column specifying the locations to conduct verification for, with NWM version indicated in column name (e.g., nwm30_link) 
   location_list_file: /home/yuqiong.liu/work/data/ngen-verf/usgs_gages_link_CONUS_calib100.csv
 
-  # parquet file containing the crosswalk between NWMv3 feature_id and usgs gage id
-  # see utils/create_crosswalk.py on how the sample crosswalk parquet was created
-  crosswalk_file: /home/yuqiong.liu/work/data/ngen-verf/crosswalks/usgs_nwm30_crosswalk_CONUS.parquet
+  # parquet files containing the crosswalk between NWM feature_id and usgs gage id
+  # note a crosswalk file should be provided for each NWM version listed in ['general']['nwm_version']
+  # see utils/create_cralib_basin_group1osswalk.py on how the sample crosswalk parquet was created
+  crosswalk_file:
+    nwm30: /home/yuqiong.liu/work/data/ngen-verf/crosswalks/usgs_nwm30_crosswalk_CONUS.parquet
+    #nwm22:
 
   # meta data for USGS gages
   gage_meta_file: /home/yuqiong.liu/work/data/ngen-verf/gages_metadata_all_domains.csv
@@ -57,6 +64,7 @@ file_paths:
 
 #### configurations for retrieving NWM forecast data (typically no need to change)
 nwm_forecast: 
+  fetch_fcst: [True, True]  # whether to fetch the forecast data for each dataset listed in ['general']['dataset_name']
   output_type: channel_rt 
   t_minus: [0, 1, 2]  # Only used if an assimilation run is selected
   data_source: GCS    # Specifies the remote location from which to fetch the data ("GCS", "NOMADS", "DSTOR")
@@ -88,7 +96,7 @@ flow_observation:
 pair_data:
 
   # whether to overwrite existing joined parquet files
-  overwrite: False
+  overwrite: True
 
 #### configuration for metrics calculation
 metrics:
@@ -98,11 +106,11 @@ metrics:
 
   # library to be used for metric calculation; currently supported options: teehr, ngen.eval
   # see the lists of supported metrics toward the end of sample config.yaml file (also ngen-verf/src/ngen/verf/settings.py)
-  # note some metrics available in ngen.eval (e.g., event-based metrics) take longer to compute
   library: 'ngen.eval'  
 
   # list of metrics to be calculated 
   # if set to 'all', all available metrics will be calculated
+  # [caution] some metrics available in ngen.eval (e.g., event-based metrics) may be time consuming to compute
   metric_subset: ['KGE','NSE','CORR','NNSE']
 
   # non-exceedance probabily threhold of streamflow to be used for categorical metrics in ngen.eval
@@ -111,20 +119,15 @@ metrics:
   # non-exceedance probabily threhold of streamflow to be used for event-based metrics in ngen.eval
   flow_threshold_event: 0.9  
 
-  # list of lead times (in hours) for which metrics should be calculated for
-  # if set to 'all', all native lead times will be calculated
-  lead_times: [1,3,5,10]
-  #lead_times: 'all'
+  # [OPTIONAL] lead time intervals (in hours) to be calculated for the paired data
+  # note the native 1-hour interval is always calcualted by default
+  #lead_interval: [1, 3, 5]
 
-  # TODO
-  # list of lead time intervals (in hours) or 'all' for which metrics should be calculated for
-  # if the list containts 'all', the maximum interval will used (i.e., metrics are calcualted using all lead times )
-  # For example, if lead_time_intervals is set to [1,3,5,'all'] for short_range, the following lead time groups will be used:
-  # 1) h1, h2, ..., h17, h18
-  # 2) h1-3, h4-6, h7-9, h10-12, h13-15, h16-18
-  # 3) h1-5, h6-10, h11-15
-  # 4) h1-18
-  #lead_time_intervals: [1,3,5,'all']
+  # list of lead times (in hours) for which metrics should be calculated for
+  # the lead times can be integers (e.g., 1,2), or an interval (e.g., 1-3), or 'all'
+  # if set to 'all', all raw lead times (i.e., 1, 2, ..., 18 in the case of short-range forecasts) will be calculated
+  #lead_times: [1,3,5,'1-3','1-5','4-6','6-10']
+  lead_times: ['all','1-5']
 
 #### configuration for plots
 # For each type of plots (histogram, boxplot, spatial map), 
@@ -138,31 +141,58 @@ plots:
     plot: True
 
     # list of metrics to create histogram plots for
-    # see 'metric_value_bins' defined in ngen-verf/src/ngen/verf/settings.py for bins used for binning each metric
-    # currently supported metrics: 'KGE','NSE','CORR','NNSE'. 
-    # expand 'metric_value_bins' to support additional metrics
     metric_subset: ['KGE','NSE','CORR','NNSE'] 
 
-    # list of lead times (in hours) to create boxplots for
-    lead_times: [1,3,5,10]
+    # for each metric, define bins for generating the histogram plot
+    # For 'KGE','NSE','CORR' and 'NNSE', default bins will be used if not defined. 
+    # For other metrics, bins must be specified here 
+    binning:
+      KGE: [-inf, -1,-0.5,0,0.2,0.4,0.6,0.8,1.0]
+      NSE: [-inf, -1,-0.5,0,0.2,0.4,0.6,0.8,1.0]
+      NNSE: [0,0.2,0.4,0.5,0.6,0.7,0.8,1.0]
+      CORR: [-1,-0.5,0,0.2,0.4,0.6,0.8,1.0]
 
-  boxplot:
+    # list of lead times (in hours) to create histograms for
+    lead_times: [1,3,5,10,'1-5']
+
+    # define a string that gets added to the filename of histogram plots to differentiate between plots 
+    # of different lead time groups or different binning scenarios, to avoid overwriting the existing plots. 
+    # Leave it blank if overwriting is desired
+    tag: test1
+
+  boxplot: # the same comments for histogram apply here (except binning)
     plot: True
     metric_subset: ['KGE','NSE','CORR','NNSE']
-    lead_times: [1,3,5,10]
+    lead_times: [1,3,5,10,1-5]
+    tag: test1
 
   spatial_map:
     plot: True
+
     # list of metrics to create spatial maps for
-    # color maps and color scales for the spatial maps are defined by 'metric_colors' in ngen-verf/src/ngen/verf/settings.py
-    # expand 'metric_colors' to support additional metrics
     metric_subset: ['KGE','NSE','CORR','NNSE']
 
-    lead_times: [1,3,5,10]
+    # for each metric, define an appropriate range (mix/max) to scale the spatial map
+    # For 'KGE','NSE','CORR' and 'NNSE', default ranges will be used if not defined. 
+    # For other metrics, a range must be specified here 
+    scaling:
+      KGE: [-0.5,1]  
+      NSE: [-0.5,1]
+      CORR: [-0.5,1]
+      #NNSE: [0.2, 0.7]
+
+    #lead_times: [1,3,5,10]
+    lead_times: [1, 3, 5, 10, 1-5]
+
+    # define a string that gets added to the filename of spatial map plots to avoid overwriting the existing ones (if any)
+    tag: test1
 
     # executable path for geckodriver (use 'which geckodriver' to find out that in your system)
+    # geckodrive is the proxy for using W3C WebDriver-compatible clients to interact with Gecko-based browsers (e.g., firefox)
+    # this is needed for creating the spatial maps 
     geckodriver_path: /snap/bin/geckodriver
-                  
+
+############### DONE WITH CONFIGURATIONS #######################                  
 #--------- List of currently supported metrics for teehr and ngen.eval -----------
 # both short and long names of the metrics are accepted
 #

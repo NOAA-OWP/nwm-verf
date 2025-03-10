@@ -6,12 +6,12 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-def join_time_series(data_paths: dict, dataset: str) -> Path:
+def join_time_series(data_paths: dict, dataset: str, nwm_version:str) -> Path:
         
     output_dir = data_paths.get('obs').parent.resolve(strict=True)
     primary_data_files = f'{str(data_paths.get("obs"))}/*.parquet'
-    secondary_data_files =f'{str(data_paths.get("fcst_link")[dataset])}/*.parquet' 
-    crosswalk_file = f'{str(data_paths.get("crosswalk"))}'
+    secondary_data_files =f'{str(data_paths.get("fcst_link")[dataset])}/*.parquet'
+    crosswalk_file = f'{str(data_paths.get("crosswalk")[nwm_version])}'
 
     # If there is an existing database, delete it and create a new one.
     db_filepath = Path(output_dir, 'teehr.db')
@@ -21,7 +21,7 @@ def join_time_series(data_paths: dict, dataset: str) -> Path:
     ddb = DuckDBDatabase(db_filepath)
 
     # Join and insert the timeseries data to the temporary database.
-    logger.info(f'  Joining time series for dataset {dataset} in DuckDBDatabase: {db_filepath}')
+    logger.info(f'  Joining time series for dataset in DuckDBDatabase: {db_filepath}')
     ddb.insert_joined_timeseries(
         primary_filepath = primary_data_files,
         secondary_filepath = secondary_data_files,
@@ -45,7 +45,7 @@ def export_paired_data(db_path:Path, paired_data: Path):
     """)
 
 
-def create_pairs(data_paths: dict, dataset: str, overwrite: bool) -> Path:
+def create_pairs(data_paths: dict, dataset: str, nwm_version:str, overwrite: bool) -> Path:
 
     # check if paired data already exist; if not, create it
     paired_data = data_paths.get('joined')[dataset]
@@ -55,7 +55,7 @@ def create_pairs(data_paths: dict, dataset: str, overwrite: bool) -> Path:
         paired_data.parent.mkdir(exist_ok=True, parents=True)
 
         # first create joined time series in (temporary) DuckDBDatabse
-        db_path = join_time_series(data_paths, dataset)
+        db_path = join_time_series(data_paths, dataset, nwm_version)
 
         # then calculate lead times
         logger.info(f'  Calculate native lead times for dataset {dataset}...')
