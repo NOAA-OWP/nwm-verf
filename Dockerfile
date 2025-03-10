@@ -31,6 +31,8 @@ RUN set -eux; \
         gcc-toolset-10-libasan-devel \
         libasan6 \
         libffi libffi-devel \
+        libglvnd-glx \
+        libXi \
         m4 \ 
         openssl openssl-devel \
         rsync \
@@ -38,8 +40,10 @@ RUN set -eux; \
         tk tk-devel \
         uuid uuid-devel \ 
         which \ 
+        xorg-x11-server-Xvfb \
         xz \
         zlib zlib-devel \
+        GConf2 \
     ; \
     dnf clean all
 
