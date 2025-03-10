@@ -101,8 +101,13 @@ def create_spatial_maps(conf:dict, data_paths: dict):
     hv.extension('bokeh', logo=False)
     gv.extension('bokeh', logo=False)
     basemap = hv.element.tiles.CartoLight()
+
+    # Configure Selenium WebDriver (Headless Mode)
     service = Service(executable_path=conf1['geckodriver_path'])
     options = Options()
+    options.add_argument("--headless")  # Run Firefox in headless mode
+    options.add_argument("--disable-gpu")  # Disable GPU acceleration
+    options.add_argument("--no-sandbox")  # Helps in containerized environments
     driver = webdriver.Firefox(service=service, options=options)
 
     # loop through lead times, metrics, and datasets to create spatial maps
