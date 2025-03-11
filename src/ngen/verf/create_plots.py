@@ -1,15 +1,12 @@
 import pandas as pd
 import geopandas as gpd
+import numpy as np
 from pathlib import Path
 from functools import reduce
-import geoviews as gv
-import holoviews as hv
 import seaborn as sns
 import matplotlib.pyplot as plt
-from bokeh.io import export_png
-from selenium.webdriver.firefox.options import Options
-from selenium import webdriver
-from selenium.webdriver.firefox.service import Service
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 from .settings import get_metric_colormap, get_metric_bins, dict_ngen_eval_metrics, dict_teehr_metrics
 
 import logging
@@ -94,21 +91,10 @@ def create_spatial_maps(conf:dict, data_paths: dict):
     df_geo = df_geo[['id','geometry']]
     df_geo = df_geo.rename(columns={'id':'primary_location_id'})
     gdf_metrics = df_geo.merge(df_metrics, on="primary_location_id", how="inner")
-    #gdf_metrics.rename(columns={'dataset':'case'}, inplace=True)
-    #print(gdf_metrics)
 
-    # set up hv/gv plotting service 
-    hv.extension('bokeh', logo=False)
-    gv.extension('bokeh', logo=False)
-    basemap = hv.element.tiles.CartoLight()
-
-    # Configure Selenium WebDriver (Headless Mode)
-    service = Service(executable_path=conf1['geckodriver_path'])
-    options = Options()
-    options.add_argument("--headless")  # Run Firefox in headless mode
-    options.add_argument("--disable-gpu")  # Disable GPU acceleration
-    options.add_argument("--no-sandbox")  # Helps in containerized environments
-    driver = webdriver.Firefox(service=service, options=options)
+    cmap1 = get_metric_colormap(conf1)
+    fig_dir = Path(data_paths['plots'], 'maps')
+    fig_dir.mkdir(parents=True, exist_ok=True)
 
     # loop through lead times, metrics, and datasets to create spatial maps
     cmap1 = get_metric_colormap(conf1)
@@ -119,32 +105,37 @@ def create_spatial_maps(conf:dict, data_paths: dict):
                 # filter data based on lead time, metric, and dataset
                 filtered_gdf = gdf_metrics.query(f"lead_group == '{lead1}' & metric == '{metric1}' & dataset == '{case1}'")
 
-                # remove NaN values
-                filtered_gdf = filtered_gdf.dropna(subset=['value']) 
+                # clip the data
+                filtered_gdf["value"] = np.clip(filtered_gdf["value"], cmap1[metric1]['clim'][0], cmap1[metric1]['clim'][1])
 
                 # draw points color coded with the metric value
-                points = basemap * gv.Points(filtered_gdf, vdims=['value', 'lead_group', 'metric', 'dataset']).opts(
-                    color='value', 
-                    tools = ['hover'], 
-                    xaxis = 'bare', yaxis = 'bare',
-                    title = f'{metric1} ({metric_long}), lead_time={lead1}h, dataset={case1}',
-                    show_legend = True,
-                    height=400, width=650, size=7, 
-                    clim = cmap1[metric1]['clim'],
-                    cmap = cmap1[metric1]['cmap'],
-                    colorbar=True)
-            
-                # Render the plot to a Bokeh figure
-                plot = gv.render(points,backend='bokeh')
+                fig, ax = plt.subplots(figsize=(8.5, 6), subplot_kw={'projection': ccrs.PlateCarree()})
+                ax.set_title(f'{metric1} ({metric_long}), lead_time={lead1}h, dataset={case1}')
 
-                # export spatial map to png
-                fig_dir = Path(data_paths['plots'],'maps')
-                fig_dir.mkdir(parents=True, exist_ok=True) 
+                # Add map features
+                ax.add_feature(cfeature.COASTLINE)
+                ax.add_feature(cfeature.BORDERS, linestyle=':')
+                ax.add_feature(cfeature.LAND, facecolor='lightgray')
+                ax.add_feature(cfeature.OCEAN, facecolor='lightblue')
+
+                # Plot points
+                sc = ax.scatter(
+                    filtered_gdf.geometry.x, 
+                    filtered_gdf.geometry.y, 
+                    c=filtered_gdf['value'], 
+                    cmap = cmap1[metric1]['cmap'], 
+                    edgecolor='k', s=50, alpha=0.8,
+                )
+                plt.colorbar(sc, ax=ax, label='',orientation='horizontal',pad=0.02)
+                ax.set_aspect(1.35)
+                
+                # export static plot to png
                 file1 = 'map_' + metric1 + '_h' + str(lead1) + '_' + case1 +'.png'
                 if 'tag' in conf1.keys() and conf1['tag'] is not None:
                     file1 = 'map_' + metric1 + '_h' + str(lead1) + '_' + case1 + '_' + conf1['tag'] + '.png'
                 fig_file = Path(fig_dir, file1)
-                export_png(plot, filename= fig_file, webdriver=driver)
+                plt.savefig(fig_file, dpi=300, bbox_inches='tight')
+                plt.close(fig)
 
     logger.info(f'Spatial maps created at: {fig_dir}')
 
