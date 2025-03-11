@@ -1,5 +1,4 @@
 from pathlib import Path
-import colorcet as cc
 import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -50,11 +49,11 @@ def get_metric_colormap(conf:dict) -> dict:
 
         # define color maps    
         if m1 in metric_groups['higher_is_better']:
-            metric_cmaps[m1]['cmap'] = cc.rainbow[::-1]
+            metric_cmaps[m1]['cmap'] = 'rainbow_r' #cc.rainbow[::-1]
         elif m1 in metric_groups['lower_is_better']:
-            metric_cmaps[m1]['cmap'] = cc.rainbow
+            metric_cmaps[m1]['cmap'] = 'rainbow' #cc.rainbow
         else:
-            logger.info(f'scaling not defined for {m1}; set to default (rainbow)')
+            logger.info(f'scaling not defined for {m1}; set to default (rainbow_r)')
     
     return metric_cmaps
 
@@ -152,10 +151,7 @@ def data_paths(conf:dict) -> dict:
     fcst_data_link_dir = dict()
     paired_data_file = dict()
     metric_file = dict()
-    for dataset in conf1['dataset_name']:
-
-        # dataset index
-        idx = conf1['dataset_name'].index(dataset)
+    for idx, dataset in enumerate(conf1['dataset_name']):
 
         # create output directories based on NWM version
         fcst_json_dir[dataset] = Path(root_dir, sub_dir, conf1['nwm_version'][idx], 'zarr', config)
