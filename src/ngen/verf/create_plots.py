@@ -52,6 +52,10 @@ def filter_by_lead_metric(df_metrics:pd.DataFrame, conf:dict):
         raise Exception(f'Metrics {mts1} not found in computed metric results')
     df_metrics1 = df_metrics1[df_metrics1['metric'].isin(mts0)]
 
+    # sort the data by lead times as shown in the configuratio
+    df_metrics1['lead_group'] = pd.Categorical(df_metrics1['lead_group'].astype(str), categories=leads0, ordered=True)
+    df_metrics1 = df_metrics1.sort_values('lead_group')
+
     return df_metrics1
     
 # gather metrics calculated for all datasets
@@ -153,6 +157,8 @@ def create_boxplots(conf:dict, data_paths: dict):
     # filter metric dataframe by lead times and metrics
     conf1 = conf['plots']['boxplot']
     df_metrics = filter_by_lead_metric(df_metrics, conf1)
+    #leads0 = [str(x) for x in conf1['lead_times']]
+    #leads = df_metrics['lead_group'].unique()
 
     # get metric long names
     metrics = conf1['metric_subset']
@@ -168,7 +174,7 @@ def create_boxplots(conf:dict, data_paths: dict):
         # start a new plot
         plt.figure()
         plt.set_loglevel('WARNING')
-        sns.boxplot(x=df1['lead_group'].astype(str),y='value',data=df1,hue='dataset')
+        sns.boxplot(x=df1['lead_group'],y='value',data=df1,hue='dataset')
         plt.title(f'{metric1}({metric_long})')
         plt.xlabel('Lead time (hours)')
         plt.ylabel('')
