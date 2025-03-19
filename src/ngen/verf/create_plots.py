@@ -96,12 +96,11 @@ def create_spatial_maps(conf:dict, data_paths: dict):
     df_geo = df_geo.rename(columns={'id':'primary_location_id'})
     gdf_metrics = df_geo.merge(df_metrics, on="primary_location_id", how="inner")
 
-    cmap1 = get_metric_colormap(conf1)
     fig_dir = Path(data_paths['plots'], 'maps')
     fig_dir.mkdir(parents=True, exist_ok=True)
 
     # loop through lead times, metrics, and datasets to create spatial maps
-    cmap1 = get_metric_colormap(conf1)
+    cmap1 = get_metric_colormap(conf1, 'map')
     for lead1 in leads:
         for metric1,metric_long in zip(metrics, metrics_long):            
             for case1 in gdf_metrics['dataset'].unique():
@@ -110,7 +109,8 @@ def create_spatial_maps(conf:dict, data_paths: dict):
                 filtered_gdf = gdf_metrics.query(f"lead_group == '{lead1}' & metric == '{metric1}' & dataset == '{case1}'")
 
                 # clip the data
-                filtered_gdf["value"] = np.clip(filtered_gdf["value"], cmap1[metric1]['clim'][0], cmap1[metric1]['clim'][1])
+                if not np.isnan(cmap1[metric1]['clim'][0]) and not np.isnan(cmap1[metric1]['clim'][1]):
+                    filtered_gdf["value"] = np.clip(filtered_gdf["value"], cmap1[metric1]['clim'][0], cmap1[metric1]['clim'][1])
 
                 # draw points color coded with the metric value
                 fig, ax = plt.subplots(figsize=(8.5, 6), subplot_kw={'projection': ccrs.PlateCarree()})
@@ -157,24 +157,29 @@ def create_boxplots(conf:dict, data_paths: dict):
     # filter metric dataframe by lead times and metrics
     conf1 = conf['plots']['boxplot']
     df_metrics = filter_by_lead_metric(df_metrics, conf1)
-    #leads0 = [str(x) for x in conf1['lead_times']]
-    #leads = df_metrics['lead_group'].unique()
 
     # get metric long names
     metrics = conf1['metric_subset']
     metrics_long = get_metric_long_name(metrics,conf['metrics']['library'])
 
     # create boxplot for each metric
+    cmap1 = get_metric_colormap(conf1, 'boxplot')
     for metric1,metric_long in zip(metrics, metrics_long):
 
-        # filter and scale the data first
+        # filter the data by metric
         df1 = df_metrics[df_metrics['metric']==metric1]
-        df1['value'][df1['value'] < -1] = -1.0
+
+        # clip the data
+        if not np.isnan(cmap1[metric1]['clim'][0]) and not np.isnan(cmap1[metric1]['clim'][1]):
+            df1["value"] = np.clip(df1["value"], cmap1[metric1]['clim'][0], cmap1[metric1]['clim'][1])
 
         # start a new plot
         plt.figure()
         plt.set_loglevel('WARNING')
-        sns.boxplot(x=df1['lead_group'],y='value',data=df1,hue='dataset')
+        if conf1['show_outliers']:
+            sns.boxplot(x=df1['lead_group'],y='value',data=df1,hue='dataset', showfliers=True)
+        else:
+            sns.boxplot(x=df1['lead_group'],y='value',data=df1,hue='dataset', showfliers=False)
         plt.title(f'{metric1}({metric_long})')
         plt.xlabel('Lead time (hours)')
         plt.ylabel('')
@@ -210,14 +215,21 @@ def create_histograms(conf:dict, data_paths: dict):
 
     # loop through metrics and lead times to create histograms
     for metric1,metric_long in zip(metrics, metrics_long):
+
+        # get custom bin edges for the metric
+        custom_bins = get_metric_bins(conf1).get(metric1)
+
         for lead1 in leads:
 
             # filter data by metric and lead time
             df = df_metrics[(df_metrics['metric']==metric1) & (df_metrics['lead_group']==lead1)]
             df = df.dropna(subset='value')
 
-            # bin the data to create customized histograms
-            df['binned'] = pd.cut(df['value'],get_metric_bins(conf1).get(metric1))
+            # bin the data to create customized histograms            
+            if len(custom_bins) > 0:
+                df['binned'] = pd.cut(df['value'], bins = custom_bins)
+            else:
+                df['binned'] = pd.cut(df['value'], bins = 8)
             df = df.sort_values(by=['binned'])
 
             # create histogram
@@ -228,6 +240,7 @@ def create_histograms(conf:dict, data_paths: dict):
             plt.title(f'{metric1}({metric_long})    lead_time={lead1}h')
             plt.xlabel('')
             plt.ylabel('Count')
+            plt.subplots_adjust(bottom=0.2) 
 
             # save plot to png
             fig_dir = Path(data_paths['plots'],'histograms')
