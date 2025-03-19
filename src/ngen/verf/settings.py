@@ -24,14 +24,14 @@ metric_color_scale_default = dict(
 metric_groups = dict(
     higher_is_better = ['CORR','sCORR','NSE','NNSE','NSElog','NSEwt','KGE','KGE1','KGE2','POD','CSI',
         'n_obs','n_mod','min_obs','min_mod','max_obs','max_mod','mean_obs','mean_mod','sum_obs','sum_mod','pt_obs','pt_mod'],
-    lower_is_better = ['ME','MAE','MSE','RMSE','RMAE','PBIAS','RBIAS','MBAIS','aprBIAS','R2R','SR',
+    lower_is_better = ['ME','MAE','MSE','RMSE','RMAE','PBIAS','RBIAS','MBAIS','aprBIAS','R2R','RSR',
         'HSEG_FDC','MSEG_FDC','LSEG_FDC','FAR','FBIAS','PKBIAS','PKTE','EVBIAS',
         'var_obs','var_mod','max_delta','pt_err'],
     abs_applicable = ['ME','PBIAS','HSEG_FDC','MSEG_FDC','LSEG_FDC']
 )
 
 # function to define the colormaps and scaling of spatial maps
-def get_metric_colormap(conf:dict) -> dict: 
+def get_metric_colormap(conf:dict, plot_type: str) -> dict: 
 
     metric_cmaps = dict()
     for m1 in conf['metric_subset']:
@@ -44,16 +44,17 @@ def get_metric_colormap(conf:dict) -> dict:
         elif m1 in metric_color_scale_default.keys():
             metric_cmaps[m1]['clim'] = metric_color_scale_default[m1]
         else:
-            logger.info(f'scaling not defined for {m1}')
+            logger.info(f'scaling not defined for {m1}; metric data will not be scaled when creating {plot_type}')
             metric_cmaps[m1]['clim'] = (float('nan'), float('nan'))
 
-        # define color maps    
-        if m1 in metric_groups['higher_is_better']:
-            metric_cmaps[m1]['cmap'] = 'rainbow_r' #cc.rainbow[::-1]
-        elif m1 in metric_groups['lower_is_better']:
-            metric_cmaps[m1]['cmap'] = 'rainbow' #cc.rainbow
-        else:
-            logger.info(f'scaling not defined for {m1}; set to default (rainbow_r)')
+        # define color maps   
+        if plot_type == 'map':
+            if m1 in metric_groups['higher_is_better']:
+                metric_cmaps[m1]['cmap'] = 'rainbow_r' #cc.rainbow[::-1]
+            elif m1 in metric_groups['lower_is_better']:
+                metric_cmaps[m1]['cmap'] = 'rainbow' #cc.rainbow
+            else:
+                logger.info(f'metric orientation not defined for {m1}; set to default (rainbow_r)')
     
     return metric_cmaps
 
@@ -69,7 +70,8 @@ def get_metric_bins(conf:dict) -> dict:
         elif m1 in metric_value_bins_default.keys():
             metric_bins[m1] = metric_value_bins_default[m1]
         else:
-            raise ValueError(f'binning is not defined for {m1}')
+            metric_bins[m1] = []
+            logger.info(f'binning is not defined for {m1}; use equal-width bins')
     
     return metric_bins
 
