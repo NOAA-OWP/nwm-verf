@@ -117,13 +117,7 @@ ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
 ARG NGEN_EVAL_TAG=development
 RUN set -eux; \
 	\
-    git clone -b ${NGEN_EVAL_TAG} https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-eval.git /ngen-app/ngen-eval ; \
-    rm --force /root/.gitconfig
-
-WORKDIR /ngen-app/ngen-eval/
-RUN set -eux; \
-	\
-    pip3 install . ; \
+    pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-eval.git@${NGEN_EVAL_TAG}#egg=ngen_eval" ; \
     pip3 cache purge
 
 COPY . /ngen-app/ngen-verf/
