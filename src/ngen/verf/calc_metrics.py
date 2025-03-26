@@ -42,13 +42,12 @@ def check_metrics_ngen_eval(metrics: list, dict1: dict):
     return(metrics1)
 
 # function to calculate TEEHR metrics
-def calc_teehr_metrics(pairs:Path, geometry: Path, metrics: Union[str,list]='all') -> pd.DataFrame:
+def calc_teehr_metrics(pairs:Path, geometry: Path, 
+                       metrics: list[str],
+) -> pd.DataFrame:
 
-    # determine the list of metrics to compute
-    if not metrics:
-        metrics = 'all'
-    else:
-        metrics = check_metrics_teehr(metrics, dict_teehr_metrics)
+    # make sure all metrics requested are supported
+    metrics = check_metrics_teehr(metrics, dict_teehr_metrics)
 
     # paired data parquet
     joined_data = DuckDBJoinedParquet(
@@ -69,15 +68,11 @@ def calc_teehr_metrics(pairs:Path, geometry: Path, metrics: Union[str,list]='all
 # function to calculate ngen.eval metrics (i.e, metrics used by ngen-cal)
 def func_calc_metrics(
         df:pd.DataFrame, 
-        metrics: Optional[Union[str,list]]='all', 
+        metrics: list[str], 
         thresholds: list=[0.9, 0.9]
 ) -> pd.DataFrame:
 
-    # detemine the list of metrics to compute
-    if not metrics:
-        metrics = 'all'
-    if metrics == 'all':
-        metrics = dict_ngen_eval_metrics.keys()
+    # make sure all metrics requested are supported
     metrics = check_metrics_ngen_eval(metrics, dict_ngen_eval_metrics)
 
     if len(df)==0:
@@ -94,7 +89,8 @@ def func_calc_metrics(
 
 def calc_ngen_eval_metrics(
         pairs:Path, 
-        metrics: Optional[Union[str,list]]="all", 
+        metrics: list[str],
+        #metrics: Optional[Union[str,list]]="all", 
         thresholds: Optional[list]=[0.9,0.9]
 ) -> pd.DataFrame:
 
@@ -120,7 +116,7 @@ def calc_ngen_eval_metrics(
             df1 = df_pairs[df_pairs['primary_location_id']==l1]
             for l2 in lead_times:
                 df2 = df1[df1['lead_group']==l2]
-                results.append(pool.apply_async(func_calc_metrics, args=(df2,metrics,thresholds)))
+                results.append(pool.apply_async(func_calc_metrics, args=(df2, metrics, thresholds)))
             
         new_dfs = [result.get() for result in results]
         df_metrics = pd.concat(new_dfs, ignore_index=True)
@@ -137,9 +133,22 @@ def calc_metrics(conf:dict, data_paths:dict, dataset: str, overwrite:bool) -> pd
     else:      
         # metrics to be calculated 
         metrics = conf['metric_subset']
-        if not isinstance(metrics,list):
-            if metrics != 'all':
-                raise Exception(f'metric_subset can only be a list or "all"')
+        metrics_exclude = conf['metric_exclude']
+
+        # detemine the list of metrics to compute
+        if not metrics or metrics == ['all'] or metrics == 'all':
+            if conf['library'] == 'teehr':
+                logger.info(f'  Calculating metrics using teehr library')
+                metrics = list(dict_teehr_metrics.keys())
+            elif conf['library'] == 'ngen.eval':
+                logger.info(f'  Calculating metrics using ngen.eval library')
+                metrics = list(dict_ngen_eval_metrics.keys())
+            else:
+                raise Exception(f'Metric library {conf["library"]} not supported')            
+
+        # exclude metrics as requested
+        if metrics_exclude and len(metrics_exclude) > 0:
+            metrics = [m1 for m1 in metrics if m1 not in metrics_exclude]
 
         # get all data pairs and raw lead times
         pairs = data_paths['joined'][dataset]
@@ -210,17 +219,19 @@ def calc_metrics(conf:dict, data_paths:dict, dataset: str, overwrite:bool) -> pd
             df0.to_parquet(pairs1)
           
             if conf['library'] == 'teehr':
-                logger.info(f'  Calculating metrics using teehr library')
-                df_metrics = pd.concat([df_metrics, calc_teehr_metrics(pairs1, data_paths['geofile'], metrics)], ignore_index=True)
+                df_metrics = pd.concat([df_metrics, calc_teehr_metrics(pairs1, data_paths['geofile'], metrics)], ignore_index=True)                
 
             elif conf['library'] == 'ngen.eval':
                 thresholds = [conf['flow_threshold_categorical'], conf['flow_threshold_event']]
-                logger.info(f'  Calculating metrics using ngen.eval library')
                 df_metrics = pd.concat([df_metrics, calc_ngen_eval_metrics(pairs1, metrics, thresholds)], ignore_index=True)
 
             else:
                 raise Exception(f'Metric library {conf["library"]} not supported')
-   
+
+        # If using teehr library, remap long name to short name for metrics
+        if conf['library'] == 'teehr':
+            df_metrics = df_metrics.rename(columns={v: k for k, v in dict_teehr_metrics.items()})
+
         # save metrics to parquet file
         df_metrics.to_parquet(metric_file)
         logger.info(f'  Metrics for dataset {dataset} are save at {metric_file}')

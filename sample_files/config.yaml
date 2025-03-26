@@ -112,8 +112,11 @@ metrics:
   # list of metrics to be calculated 
   # if set to 'all', all available metrics will be calculated
   # [caution] some metrics available in ngen.eval (e.g., event-based metrics) may be time consuming to compute
-  metric_subset: [KGE, NSE, CORR, NNSE]
-  #metric_subset: [KGE, NSE, CORR, NNSE, NSE, RMSE, MAE, RSR, PBIAS, POD, FAR, CSI, HSEG_FDC, LSEG_FDC]
+  #metric_subset: [KGE, NSE, CORR, NNSE]
+  metric_subset: 'all'
+
+  # list of metrics to be excluded from calculation (leave to be blank if no need to exclude any metrics)
+  metric_exclude: [PKBIAS, PKTE, EVBIAS, FBIAS]
 
   # non-exceedance probability threshold of streamflow to be used for categorical metrics in ngen.eval
   flow_threshold_categorical: 0.9
