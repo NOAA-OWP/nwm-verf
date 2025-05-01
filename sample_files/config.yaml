@@ -24,7 +24,7 @@ general:
   location_type:
 
   variable_name: streamflow # currently only option is 'streamflow'
-  nwm_configuration: short_range   # e.g., analysis_assim, short_range, analysis_assim_hawaii, medium_range_mem1
+  nwm_configuration: short_range   # Currently, only short_range is supported
 
   # user-specified name of datasets for comparison (to be used for creating sub-folders for datasets and plots)
   dataset_name: [v3_sep, v3_oct]
@@ -112,8 +112,11 @@ metrics:
   # list of metrics to be calculated 
   # if set to 'all', all available metrics will be calculated
   # [caution] some metrics available in ngen.eval (e.g., event-based metrics) may be time consuming to compute
-  metric_subset: [KGE, NSE, CORR, NNSE]
-  #metric_subset: [KGE, NSE, CORR, NNSE, NSE, RMSE, MAE, RSR, PBIAS, POD, FAR, CSI, HSEG_FDC, LSEG_FDC]
+  #metric_subset: [KGE, NSE, CORR, NNSE]
+  metric_subset: 'all'
+
+  # list of metrics to be excluded from calculation (leave to be blank if no need to exclude any metrics)
+  metric_exclude: [PKBIAS, PKTE, EVBIAS, FBIAS]
 
   # non-exceedance probability threshold of streamflow to be used for categorical metrics in ngen.eval
   flow_threshold_categorical: 0.9

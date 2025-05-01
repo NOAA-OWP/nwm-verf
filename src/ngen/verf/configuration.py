@@ -54,7 +54,8 @@ class MetricsConfig(BaseModel):
     """ Data model for the 'metrics' section of the config file """
     overwrite: bool
     library: str
-    metric_subset: List[str]
+    #metric_subset: Optional[Union[str,List[str]]] = 'all'
+    metric_subset: Union[str,List[str]]
     flow_threshold_categorical: Optional[float] = 0.9
     flow_threshold_event: Optional[float] = 0.9
     lead_times: List[Union[str, int]]
@@ -112,7 +113,7 @@ def load_and_validate_yaml(file_path: str):
             return data
             #return validated_config
     except ValidationError as e:
-        print("Validation Error:", e)
+        raise Exception(f'Validation Error: {e}')
     except Exception as e:
-        print("Error loading YAML file:", e)
+        raise Exception(f'Error loading YAML file: {e}')
 
