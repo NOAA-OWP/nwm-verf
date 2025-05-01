@@ -24,7 +24,7 @@ general:
   location_type:
 
   variable_name: streamflow # currently only option is 'streamflow'
-  nwm_configuration: short_range   # e.g., analysis_assim, short_range, analysis_assim_hawaii, medium_range_mem1
+  nwm_configuration: short_range   # Currently, only short_range is supported
 
   # user-specified name of datasets for comparison (to be used for creating sub-folders for datasets and plots)
   dataset_name: [v3_sep, v3_oct]
