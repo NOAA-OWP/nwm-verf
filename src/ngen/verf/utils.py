@@ -47,6 +47,6 @@ def get_n_workers(memory_per_worker_gb: int) -> int:
     # Safety check
     n_workers = max(n_workers, 1)
 
-    logger.info(f"Using {n_workers} workers, with ~{memory_per_worker_gb} GB per worker.")
+    logger.info(f"  Using {n_workers} workers, with ~{memory_per_worker_gb} GB per worker.")
 
     return n_workers

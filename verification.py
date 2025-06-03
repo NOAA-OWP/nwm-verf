@@ -30,7 +30,7 @@ if __name__ == "__main__":
 
     # Parse the arguments
     args = parser.parse_args()
-    logger.info(f"Config file to use: {args.config_file}")
+    logger.info(f"  Config file to use: {args.config_file}")
 
     # read and validate configurations
     conf = load_and_validate_yaml(args.config_file)
