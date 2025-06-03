@@ -122,13 +122,19 @@ def create_spatial_maps(conf:dict, data_paths: dict):
                 ax.add_feature(cfeature.LAND, facecolor='lightgray')
                 ax.add_feature(cfeature.OCEAN, facecolor='lightblue')
 
+                # Dynamically compute point size
+                n_points = len(filtered_gdf)
+                base_size = 10000  # adjust this constant to control density sensitivity
+                point_size = max(10, base_size / n_points)  # minimum size to keep the points visible
+                point_size = min(100, point_size) # don't want them too big either
+
                 # Plot points
                 sc = ax.scatter(
                     filtered_gdf.geometry.x, 
                     filtered_gdf.geometry.y, 
                     c=filtered_gdf['value'], 
                     cmap = cmap1[metric1]['cmap'], 
-                    edgecolor='k', s=50, alpha=0.8,
+                    edgecolor='k', s=point_size, alpha=0.8,
                 )
                 plt.colorbar(sc, ax=ax, label='',orientation='horizontal',pad=0.02)
                 ax.set_aspect(1.35)
@@ -162,6 +168,10 @@ def create_boxplots(conf:dict, data_paths: dict):
     metrics = conf1['metric_subset']
     metrics_long = get_metric_long_name(metrics,conf['metrics']['library'])
 
+    # ensure consistent colors applied to each dataset across metrics
+    dataset_names = sorted(df_metrics["dataset"].unique())
+    palette = dict(zip(dataset_names, sns.color_palette("tab10", len(dataset_names))))
+
     # create boxplot for each metric
     cmap1 = get_metric_colormap(conf1, 'boxplot')
     for metric1,metric_long in zip(metrics, metrics_long):
@@ -177,9 +187,11 @@ def create_boxplots(conf:dict, data_paths: dict):
         plt.figure()
         plt.set_loglevel('WARNING')
         if conf1['show_outliers']:
-            sns.boxplot(x=df1['lead_group'],y='value',data=df1,hue='dataset', showfliers=True)
+            sns.boxplot(x=df1['lead_group'],y='value',data=df1,hue='dataset', hue_order=dataset_names, 
+                        showfliers=True, palette=palette)
         else:
-            sns.boxplot(x=df1['lead_group'],y='value',data=df1,hue='dataset', showfliers=False)
+            sns.boxplot(x=df1['lead_group'],y='value',data=df1,hue='dataset', hue_order=dataset_names,
+                        showfliers=False, palette=palette)
         plt.title(f'{metric1}({metric_long})')
         plt.xlabel('Lead time (hours)')
         plt.ylabel('')
@@ -213,11 +225,18 @@ def create_histograms(conf:dict, data_paths: dict):
     metrics = conf1['metric_subset']
     metrics_long = get_metric_long_name(metrics,conf['metrics']['library'])
 
+    # get custom bin edges for the metrics
+    custom_bins = get_metric_bins(conf1)
+
+    # ensure consistent colors applied to each dataset across metrics
+    dataset_names = sorted(df_metrics["dataset"].unique())
+    palette = dict(zip(dataset_names, sns.color_palette("tab10", len(dataset_names))))
+
     # loop through metrics and lead times to create histograms
     for metric1,metric_long in zip(metrics, metrics_long):
 
-        # get custom bin edges for the metric
-        custom_bins = get_metric_bins(conf1).get(metric1)
+        # bin edges for the metric
+        bins1 = custom_bins.get(metric1)
 
         for lead1 in leads:
 
@@ -226,8 +245,8 @@ def create_histograms(conf:dict, data_paths: dict):
             df = df.dropna(subset='value')
 
             # bin the data to create customized histograms            
-            if len(custom_bins) > 0:
-                df['binned'] = pd.cut(df['value'], bins = custom_bins)
+            if len(bins1) > 0:
+                df['binned'] = pd.cut(df['value'], bins = bins1)
             else:
                 df['binned'] = pd.cut(df['value'], bins = 8)
             df = df.sort_values(by=['binned'])
@@ -235,7 +254,8 @@ def create_histograms(conf:dict, data_paths: dict):
             # create histogram
             plt.figure()
             plt.set_loglevel('WARNING')
-            ax = sns.histplot(data=df, x=df["binned"].astype(str), hue="dataset", multiple="dodge", shrink=.8)
+            ax = sns.histplot(data=df, x=df["binned"].astype(str), hue="dataset", hue_order=dataset_names, 
+                              multiple="dodge", shrink=.8, palette=palette)
             plt.setp(ax.get_xticklabels(), rotation=30)
             plt.title(f'{metric1}({metric_long})    lead_time={lead1}h')
             plt.xlabel('')

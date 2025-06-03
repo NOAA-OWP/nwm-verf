@@ -13,29 +13,29 @@ general:
   # user-specified name for the set of locations to carry out verification for
   # this name is used to create a folder in 'data_dir_root' (in 'file_paths' section) to store all the datasets and outputs
   # see function 'data_paths' in ngen-verf/src/ngen/verf/settings.py to see how the overall data directory structure is defined
-  location_set_name: calib_basin_group1
+  location_set_name: new_test
 
-  # [optional] but either location_list or location_list_file (in ['file_paths']) must be specifed
-  # list of usgs gage IDs or NWM links IDs; if blank, a location_list_file must be provided in 'file_paths' section
+  # [optional] list of usgs gage IDs or NWM links IDs; if blank, a location_list_file must be provided in 'file_paths' section
+  # if location_list and location_list_file are provided, location_list takes precedence
   location_list:
 
-  # [optional] but must be specified if locaiton_list is not blank; currently supported options: usgs_gage, nwm30_link or nwm22_link 
-  # depending on which NWM versions are listed in ['general'] ['nwm_version']
+  # [optional] must be specified if locaiton_list is not blank; currently supported options: usgs_gage, nwm30_link 
   location_type:
 
-  variable_name: streamflow # currently only option is 'streamflow'
+  variable_name: streamflow # currently only 'streamflow' is supported
   nwm_configuration: short_range   # Currently, only short_range is supported
 
-  # user-specified name of datasets for comparison (to be used for creating sub-folders for datasets and plots)
+  # user-specified name of datasets (to be used for creating sub-folders for datasets and plots)
+  # must be a list of one or more strings
   dataset_name: [v3_sep, v3_oct]
 
-  # list of NWM versions; list must have the same length as 'dataset_name' 
-  # Currently accepts "nwm22" or "nwm30"; Use "nwm22" for dates prior to 09-19-2023
+  # list of NWM versions; list must have the same length as 'dataset_name'. Currently only option is "nwm30"
   nwm_version: [nwm30, nwm30]
 
-  # list of start/end dates for forecast verification period; list must have the same length as 'dataset_name' 
+  # list of start/end dates for forecast verification period; list must have the same length as 'dataset_name'
+  # date ranges specified must be applicable to the corresponding NWM archive in Google cloud 
   forecast_start_date: ['2024-09-01', '2024-10-01']
-  forecast_end_date: ['2024-09-30', '2024-10-31']
+  forecast_end_date: ['2024-09-01', '2024-10-01']
 
 #### configurations for various file paths
 # see some sample files at ngen-verf/sample_files/gage_files
@@ -44,23 +44,25 @@ file_paths:
   # root directory to store the downloaded NWM forecast and flow observation data
   data_dir_root: /home/yuqiong.liu/work/data/ngen-verf
 
-  # [optional] but either location_list (in ['general']) or location_list_file must be specifed
-  # tab or comma delimited csv file, which must contain either a "gage" or 
+  # [optional] but either location_list (in 'general' section) or location_list_file must be specifed
+  # tab or comma delimited csv file, and must contain either a "gage" or 
   # a "link" column specifying the locations to conduct verification for, with NWM version indicated in column name (e.g., nwm30_link) 
   location_list_file: /home/yuqiong.liu/work/data/ngen-verf/usgs_gages_link_CONUS_calib100.csv
 
   # parquet files containing the crosswalk between NWM feature_id and usgs gage id
-  # note a crosswalk file should be provided for each NWM version listed in ['general']['nwm_version']
+  # note a crosswalk file should be provided for each NWM version listed in 'general/nwm_version'
   # see utils/create_cralib_basin_group1osswalk.py on how the sample crosswalk parquet was created
   crosswalk_file:
     nwm30: 
       /home/yuqiong.liu/work/data/ngen-verf/crosswalks/usgs_nwm30_crosswalk_CONUS.parquet
-    #nwm22:
+    #nwm40:
 
-  # meta data for USGS gages
+  # meta data for USGS gages (sample file ngen-verf/sample_files/gage_files/gages_metadata_all_domains.csv contains 8660 USGS gages)
   gage_meta_file: /home/yuqiong.liu/work/data/ngen-verf/gages_metadata_all_domains.csv
 
   # geometry (point lat/lon) for USGS gages; see utils/create_geometry.py on how the sample geometry parquet was created
+  # sample file ngen-verf/sample_files/gage_files/usgs_point_geometry_CONUS.parquet contains 8186 USGS gages
+  # the sample file can be used to obtain more locations for verfication (other than those provided in the test dataset)
   geometry_file: /home/yuqiong.liu/work/data/ngen-verf/geometry/usgs_point_geometry_CONUS.parquet
 
 #### configurations for retrieving NWM forecast data (typically no need to change)
@@ -86,18 +88,24 @@ nwm_forecast:
 
   overwrite_output: false  # If True, existing output files will be overwritten; if False, existing files are retained
 
+  memory_per_worker_gb: 3  # configurable memory (in GB) assigned to each worker
+
 #### configurations for retrieving streamflow observation data (currently only usgs is supported)
 #### typically no need to change selections in this section
 flow_observation:
   usgs: # flow obs retrieved will be stored at [data_dir_root]/[location_set_name]/usgs
-    chunk_by: month   # data are saved in parquet files by month
+    chunk_by: day   # data are saved in parquet files by day/month/year
     overwrite_output: false  # If True, existing output files will be overwritten; if False, existing files are retained
+    memory_per_worker_gb: 3  # configurable memory (in GB) assigned to each worker
 
 #### paired data generation
 pair_data:
 
   # whether to overwrite existing joined parquet files
   overwrite: true
+
+  # break the location list into smaller groups to avoid potential memory issues (and speed up processing)
+  group_size: 200
 
 #### configuration for metrics calculation
 metrics:
@@ -116,6 +124,7 @@ metrics:
   metric_subset: 'all'
 
   # list of metrics to be excluded from calculation (leave to be blank if no need to exclude any metrics)
+  # here the event-based metrics are excluded because they take a lot of time to run
   metric_exclude: [PKBIAS, PKTE, EVBIAS, FBIAS]
 
   # non-exceedance probability threshold of streamflow to be used for categorical metrics in ngen.eval
@@ -128,7 +137,7 @@ metrics:
   # the lead times can be integers (e.g., 1,2), or an interval (e.g., 1-3), or 'all'
   # if set to 'all', all raw lead times (i.e., 1, 2, ..., 18 in the case of short-range forecasts) will be calculated
   #lead_times: [1,3,5,'1-3','1-5','4-6','6-10']
-  lead_times: [all, 1-5, 1-12]
+  lead_times: [all, 1-5, 6-10, 11-18]
 
 #### configuration for plots
 # For each type of plots (histogram, boxplot, spatial map), 
@@ -145,8 +154,8 @@ plots:
     #metric_subset: [PBIAS]
 
     # for each metric, define list of bin edges for generating the histogram plot
-    # For 'KGE','NSE','CORR' and 'NNSE', default bins will be used if not defined. 
-    # For other metrics, the data will be cut into 8 equal-width bins if bin edges are not provide 
+    # For 'KGE','NSE','CORR' and 'NNSE', default bins (see settings.py) will be used if not defined. 
+    # For other metrics, the data will be cut into 8 equal-width bins if bin edges are not provided 
     binning:
       KGE: [-inf, -1, -0.5, 0, 0.2, 0.4, 0.6, 0.8, 1.0]
       NSE: [-inf, -1, -0.5, 0, 0.2, 0.4, 0.6, 0.8, 1.0]
@@ -160,15 +169,15 @@ plots:
     # define a string that gets added to the filename of histogram plots to differentiate between plots 
     # of different lead time groups or different binning scenarios, to avoid overwriting the existing plots. 
     # Leave it blank if overwriting is desired
-    tag: 
+    tag:
 
-  boxplot: # the same comments for histogram apply here (except binning)
+  boxplot: # the same comments for histogram apply here (except for binning)
     plot: true
     metric_subset: [KGE, NSE, CORR, NNSE]
     #metric_subset: [PBIAS, RSR, RMSE, MAE]
 
     # Define an appropriate range (min/max) for each metric to scale the boxplot.
-    # Default ranges will be applied for 'KGE', 'NSE', 'CORR', and 'NNSE' if not specified.
+    # Default ranges (see settings.py) will be applied for 'KGE', 'NSE', 'CORR', and 'NNSE' if not specified.
     # For other metrics, if a range is not defined, values will remain unscaled, 
     #    which may result in improperly displayed statistics due to outliers.    
     scaling:
@@ -183,14 +192,13 @@ plots:
 
     lead_times: [1, 3, 5, 10, 15, 18, 1-5, 1-12]
     show_outliers: false
-    tag: 
+    tag:
 
   spatial_map:
     plot: true
 
     # list of metrics to create spatial maps for
     metric_subset: [KGE, NSE, CORR, NNSE]
-    #metric_subset: [PBIAS, RSR, RMSE, MAE]
 
     # Define an appropriate range (min/max) for each metric to scale the spatial map
     scaling:
@@ -206,7 +214,7 @@ plots:
     lead_times: [1, 3, 5, 10, 15, 18, 1-5, 1-12]
 
     # define a string that gets added to the filename of spatial map plots to avoid overwriting the existing ones (if any)
-    tag: 
+    tag:
 
 ############### DONE WITH CONFIGURATIONS #######################                  
 #--------- List of currently supported metrics for teehr and ngen.eval -----------

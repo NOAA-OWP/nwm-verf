@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import gc
 from teehr.classes.duckdb_joined_parquet import DuckDBJoinedParquet
 from multiprocessing import Pool, cpu_count
 from typing import Optional, Union
@@ -75,7 +76,8 @@ def func_calc_metrics(
     # make sure all metrics requested are supported
     metrics = check_metrics_ngen_eval(metrics, dict_ngen_eval_metrics)
 
-    if len(df)==0:
+    #if len(df)==0:
+    if len(df) < 2: #personr calculation requires data length of at least 2
         return pd.DataFrame()
     else:
         df1 = df.copy(deep=True)
@@ -123,117 +125,107 @@ def calc_ngen_eval_metrics(
 
     return df_metrics
 
-def calc_metrics(conf:dict, data_paths:dict, dataset: str, overwrite:bool) -> pd.DataFrame:
+def calc_metrics_group(conf:dict, pair_file:Path, geofile: Path) -> pd.DataFrame:
    
-    # check if metric file already exists
-    metric_file = data_paths['metrics'][dataset]
-    metric_file.parent.mkdir(exist_ok=True, parents=True)
-    if (metric_file.is_file() and (not overwrite)):
-        logger.info(f'  Metric file {metric_file} already exist; remove the file or change "overwrite" to False to recalcualte metrics')
-    else:      
-        # metrics to be calculated 
-        metrics = conf['metric_subset']
-        metrics_exclude = conf['metric_exclude']
+    # metrics to be calculated 
+    metrics = conf['metric_subset']
+    if not metrics or metrics == ['all'] or metrics == 'all':               
+        metrics = list(dict_teehr_metrics.keys()) if conf['library'] == 'teehr' else list(dict_ngen_eval_metrics.keys())
+                         
+    # exclude metrics as requested
+    metrics_exclude = conf['metric_exclude']
+    if metrics_exclude and len(metrics_exclude) > 0:
+        metrics = [m1 for m1 in metrics if m1 not in metrics_exclude]
 
-        # detemine the list of metrics to compute
-        if not metrics or metrics == ['all'] or metrics == 'all':
-            if conf['library'] == 'teehr':
-                logger.info(f'  Calculating metrics using teehr library')
-                metrics = list(dict_teehr_metrics.keys())
-            elif conf['library'] == 'ngen.eval':
-                logger.info(f'  Calculating metrics using ngen.eval library')
-                metrics = list(dict_ngen_eval_metrics.keys())
-            else:
-                raise Exception(f'Metric library {conf["library"]} not supported')            
+    # get all data pairs and raw lead times
+    df0 = pd.read_parquet(pair_file)
+    leads0 = df0['lead_time'].unique()
+    leads0.sort()
+    lead_step = leads0[0]
 
-        # exclude metrics as requested
-        if metrics_exclude and len(metrics_exclude) > 0:
-            metrics = [m1 for m1 in metrics if m1 not in metrics_exclude]
+    # lead times to calculate metrics for (can be grouped lead times e.g., 1-3 hours)
+    if 'lead_times' in conf.keys() and conf['lead_times'] is not None:
+        lead_times = [str(x) for x in conf['lead_times']]
+    else:
+        lead_times = ['all']
 
-        # get all data pairs and raw lead times
-        pairs = data_paths['joined'][dataset]
-        df0 = pd.read_parquet(pairs)
-        leads0 = df0['lead_time'].unique()
-        leads0.sort()
-        lead_step = leads0[0]
+    # interpret 'all' as calculating all native lead times (leads0)        
+    if 'all' in lead_times:
+        lead_times = list(map(str, leads0)) + [x for x in lead_times if x != 'all']
+    
+    # removed repetitive lead times if any
+    lead_times = sorted(list(set(lead_times)))
 
-        # lead times to calculate metrics for (can be grouped lead times e.g., 1-3 hours)
-        if 'lead_times' in conf.keys() and conf['lead_times'] is not None:
-            lead_times = [str(x) for x in conf['lead_times']]
-        else:
-            lead_times = ['all']
+    # loop through all lead times (including grouped lead times)
+    df_metrics = pd.DataFrame()
+    for l1 in lead_times:
 
-        # removed repetitive lead times covered by "all" raw lead times
-        if 'all' in lead_times:
-            lead_times = [x for x in lead_times if x != str(lead_step)]
-        lead_times = list(set(lead_times))
+        leads1 = l1.split('-')
+        if len(leads1)==1:
+            leads1 = leads1 + leads1
+        leads1 = list(range(int(leads1[0]), int(leads1[1]) + lead_step, lead_step))
 
-        # get all lead times (groups) and all lead time intervals (in hours)
-        lead_ints = []
-        lead_times_all = []
-        for s1 in lead_times:
-            if s1=='all':
-                int1 = [lead_step] * len(leads0)
-                lead_ints = lead_ints + int1
-                lead_times_all = lead_times_all + list(map(str, leads0))
-            else:
-                range1 = [int(x) for x in s1.split('-')]
-                if len(range1) == 1:
-                    range1 = [range1[0]-lead_step] + range1
-                int1 = range1[1] - range1[0]
-                int1 = int1 if int1 == lead_step else int1 + 1
-                lead_times_all = lead_times_all + [s1]
-                lead_ints = lead_ints + [int1]     
+        # get paired data for the current lead time
+        df1 = df0[df0['lead_time'].isin(leads1)]
+        df1['lead_group'] = l1
 
-        assert len(lead_times_all) == len(lead_ints), \
-            f'lead_times_all (len={len(lead_times_all)}) and lead_ints (len={len(lead_ints)}) must have the same length'
-
-        # loop through all lead time intervals to calculate metrics
-        lead_ints_unique = list(set(lead_ints))
-        df_metrics = pd.DataFrame()
-        for l1 in lead_ints_unique:
-
-            # add a column of lead time group (string) to the paired data
-            if l1 == lead_step:
-                lead_grps = [str(x) for x in leads0]
-                df0['lead_group'] = df0['lead_time'].map(str)
-            else:
-                bins = list(range(0, max(leads0)+1, l1))
-                cuts = pd.cut(leads0, bins, right=True, include_lowest=False)
-                lead_grps = [x.replace('(','').replace(']','').replace(', ','-') for x in cuts.astype(str)]
-                lead_grps = [str(int(x.split('-')[0])+1) + '-' + x.split('-')[1] if x!='nan' else x for x in lead_grps]
-                df0['lead_group'] = df0['lead_time'].map(dict(zip(leads0, lead_grps)))
-
-            # gather lead time groups (to be computed) that are corresponding to the current lead time interval
-            leads = [x for x,y in zip(lead_times_all, lead_ints) if y==l1]
-
-            # filter paired data based on lead times
-            lead_groups0 = df0['lead_group'].unique()
-            leads1 = [l1 for l1 in leads if l1 not in lead_groups0]
-            if len(leads1) > 0:
-                raise Exception(f'  lead group {leads1} not found in paired data')
-            df0 = df0[df0['lead_group'].isin(leads)]
-
-            # save filtered data to new parquet file
-            pairs1 = Path(str(pairs).replace('joined.parquet','joined_new.parquet'))
-            df0.to_parquet(pairs1)
+        # save filtered data to new (temporary) parquet file
+        pair_file1 = pair_file.with_name(pair_file.stem + ".new.parquet")
+        df1.to_parquet(pair_file1)
           
-            if conf['library'] == 'teehr':
-                df_metrics = pd.concat([df_metrics, calc_teehr_metrics(pairs1, data_paths['geofile'], metrics)], ignore_index=True)                
-
-            elif conf['library'] == 'ngen.eval':
-                thresholds = [conf['flow_threshold_categorical'], conf['flow_threshold_event']]
-                df_metrics = pd.concat([df_metrics, calc_ngen_eval_metrics(pairs1, metrics, thresholds)], ignore_index=True)
-
-            else:
-                raise Exception(f'Metric library {conf["library"]} not supported')
-
-        # If using teehr library, remap long name to short name for metrics
         if conf['library'] == 'teehr':
-            df_metrics = df_metrics.rename(columns={v: k for k, v in dict_teehr_metrics.items()})
+            df_metrics = pd.concat([df_metrics, calc_teehr_metrics(pair_file1, geofile, metrics)], ignore_index=True)                
 
-        # save metrics to parquet file
-        df_metrics.to_parquet(metric_file)
-        logger.info(f'  Metrics for dataset {dataset} are save at {metric_file}')
+        elif conf['library'] == 'ngen.eval':
+            thresholds = [conf['flow_threshold_categorical'], conf['flow_threshold_event']]
+            df_metrics = pd.concat([df_metrics, calc_ngen_eval_metrics(pair_file1, metrics, thresholds)], ignore_index=True)
+
+        else:
+            raise Exception(f'Metric library {conf["library"]} not supported')
+        
+        # remove the temporary new parquet file
+        pair_file1.unlink(missing_ok=True)
+        del df1
+        gc.collect()
+
+    # If using teehr library, remap long name to short name for metrics
+    if conf['library'] == 'teehr':
+        df_metrics = df_metrics.rename(columns={v: k for k, v in dict_teehr_metrics.items()})
 
     return df_metrics
+
+def calc_metrics(conf: dict, data_paths: dict):
+
+    # library for calculating metrics
+    supported_libraries = {'teehr', 'ngen.eval'}
+    if 'library' not in conf['metrics']:
+        raise KeyError("Missing required key: 'library' in metric configuration.")
+    library = conf['metrics']['library']
+
+    if library not in supported_libraries:
+        raise ValueError(
+            f"Unsupported metric library: '{library}'. "
+            f"Supported libraries are: {', '.join(sorted(supported_libraries))}."
+        ) 
+    logger.info(f'Metrics will be calculated using {library} library')
+
+    # loop through dataset to calculate metrics
+    for dataset in conf['general']['dataset_name']:
+        
+        # check if metric file already exists
+        metric_file = data_paths['metrics'][dataset]
+        metric_file.parent.mkdir(exist_ok=True, parents=True)
+        if (metric_file.is_file() and (not conf['metrics']['overwrite'])):
+            logger.info(f'  Metric file {metric_file} already exist; remove the file or change "overwrite" to False to recalcualte metrics')
+        else:    
+
+            # calculate metrics for each group of paired data and append to a single parquet file
+            pair_path = data_paths['joined'][dataset]
+            pair_files = list(pair_path.parent.glob(f'{pair_path.stem}.group*.parquet'))
+            for i1, pair_file in enumerate(pair_files):
+                logger.info(f'Calculating metrics for {dataset} group {i1} ...')            
+                df_metrics = calc_metrics_group(conf['metrics'], pair_file, data_paths['geofile']) 
+                if i1 == 0:
+                    df_metrics.to_parquet(metric_file, engine="fastparquet", index=False)
+                else:
+                    df_metrics.to_parquet(metric_file, engine="fastparquet", index=False, append=True) 
