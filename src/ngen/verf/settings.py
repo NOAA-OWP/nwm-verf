@@ -162,7 +162,7 @@ def data_paths(conf:dict) -> dict:
         # create additional directory for storing symbolic links to parquet files required for each dataset
         fcst_data_link_dir[dataset] = Path(root_dir, sub_dir, conf1['dataset_name'][idx],'fcst')                 
    
-        # path for joined parquet files
+        # path for joined parquet files (note in pair_data.py, 'group*' will be added to the file name for individual location groups)
         paired_data_file[dataset] = Path(root_dir, sub_dir, 'joined', dataset + '.joined.parquet')
 
         # path for metric output files

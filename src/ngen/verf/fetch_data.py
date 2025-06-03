@@ -2,12 +2,12 @@ import pandas as pd
 import os
 import glob
 from pathlib import Path
+import gc
 from dask.distributed import Client, LocalCluster  #install with 'pip install dask[complete]'
 import teehr.loading.nwm.nwm_points as tlp
 from teehr.loading.usgs.usgs import usgs_to_parquet
-from .utils import create_hour_sequence
+from .utils import create_hour_sequence, get_n_workers
 from .nwm_configs import get_nwm_fcst_window, get_nwm_cycle_frequency
-from .identify_location_ids import get_nwm_link_ids, get_usgs_gage_ids
 
 import warnings
 warnings.filterwarnings("ignore", message="Compute Engine Metadata server unavailable")
@@ -16,11 +16,12 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-def retrieve_usgs_obs(conf: dict, output_dir:Path):
+def retrieve_usgs_obs(locations:dict, conf: dict, output_dir:Path):
 
     """
     Retrieve USGS streamflow observations given configuration and a list of gage IDs
 
+    locations: dictionary containing USGS gage IDs for which observations are to be retrieved
     conf: dictionary defining the configurations (e.g., config.yaml)
 
     Data retrieved will be saved in parquet files by chunk (e.g., month) in the data directory defined in conf
@@ -38,6 +39,8 @@ def retrieve_usgs_obs(conf: dict, output_dir:Path):
     if len(parquet_files)>0 and not conf2['overwrite_output']:        
         periods = sorted([os.path.basename(x).split('.')[0].split('_') for x in parquet_files])
         for p1 in periods:
+            if len(p1) == 1:
+                p1 = [p1[0], p1[0]]
             dates0 = dates0 + create_hour_sequence(p1[0], p1[1], by_hours=24)
         dates0 = sorted(list(set(dates0)))
         dates0 = [x.strftime('%Y-%m-%d') for x in dates0]  
@@ -62,9 +65,6 @@ def retrieve_usgs_obs(conf: dict, output_dir:Path):
         logger.info(f'  USGS data for all required dates already exist')
     else:
 
-        # get USGS gage ID for verification locations
-        locations = get_usgs_gage_ids(conf) 
-
         # create data path
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -85,16 +85,19 @@ def retrieve_usgs_obs(conf: dict, output_dir:Path):
 
         # loop through the date chunks to download USGS data
         for d1 in date_list:
+
             logger.info(f'  Downloading USGS data for {min(d1)} to {max(d1)} ...')
 
-            # use a local dask cluster to fetch the data
-            n_workers = max(os.cpu_count() - 2, 1)
+            # use a local dask cluster to fetch the data; determine n_workers dynamically
+            #n_workers = max(os.cpu_count() - 2, 1)
+            mem_limit = conf2['memory_per_worker_gb']
+            n_workers = get_n_workers(mem_limit)
             with LocalCluster(n_workers=n_workers,
-                              processes=False, memory_limit="2GB",
+                        processes=True, memory_limit=f"{mem_limit}GB", dashboard_address=None,
             ) as cluster, Client(cluster) as client:
                 
                 usgs_to_parquet(
-                    sites = locations,
+                    sites = locations[conf1['location_set_name']]['primary_location_id'].tolist(),
                     start_date = min(d1),
                     end_date = max(d1),
                     output_parquet_dir = str(output_dir),
@@ -102,19 +105,28 @@ def retrieve_usgs_obs(conf: dict, output_dir:Path):
                     overwrite_output = conf2['overwrite_output']
                 )
 
+            # clean up memory
+            gc.collect()
+
         logger.info(f'  USGS observation data are saved in parquet files at: {output_dir}')
 
 
-def retrieve_nwm_fcsts(conf: dict, output_dir:dict, json_dir:dict, data_link_dir:dict):
+def retrieve_nwm_fcsts(locations:dict, conf: dict, data_paths:dict):
 
     """
     Retrieve NMW forecasts given the configrations and list of locations
 
+    locations: dictionary containing secondary ID (NWM link IDs) for which forecasts are to be retrieved
     conf: dictionary defining the configurations (e.g., config.yaml)
+    data_paths: dictionary containing paths to store the data
 
     Data retrieved will be saved in parquet files by forecast cycle in the data directory defined in conf
 
     """
+    output_dir = data_paths.get('fcst')
+    json_dir = data_paths.get('fcst_json')
+    data_link_dir = data_paths.get('fcst_link')
+
     # get some general information
     conf1 = conf['general']
     conf2 = conf['nwm_forecast']
@@ -131,9 +143,6 @@ def retrieve_nwm_fcsts(conf: dict, output_dir:dict, json_dir:dict, data_link_dir
             version = conf1['nwm_version'][i1]
             start_date = conf1['forecast_start_date'][i1]
             end_date = conf1['forecast_end_date'][i1]
-
-            # get NWM link ID for verification locations
-            locations = get_nwm_link_ids(conf, version)
 
             # get forecast configuration and cycle frequency
             fcst_freq = get_nwm_cycle_frequency(config)
@@ -168,10 +177,12 @@ def retrieve_nwm_fcsts(conf: dict, output_dir:dict, json_dir:dict, data_link_dir
 
                     logger.info(f'  Retriving NWM forecast data for {d1} ...')
 
-                    # use a local dask cluster to fetch the data
-                    n_workers = max(os.cpu_count() - 2, 1)
+                    # use a local dask cluster to fetch the data; determine n_workers dynamically
+                    #n_workers = max(os.cpu_count() - 2, 1)
+                    mem_limit = conf2['memory_per_worker_gb']
+                    n_workers = get_n_workers(mem_limit)
                     with LocalCluster(n_workers=n_workers,
-                                processes=False, memory_limit="3GB",
+                                processes=True, memory_limit=f"{mem_limit}GB", dashboard_address=None,
                     ) as cluster, Client(cluster) as client:
                         
                         # fectch NWM forecasts data (1-month short-range took around 1.5 hours)
@@ -181,7 +192,7 @@ def retrieve_nwm_fcsts(conf: dict, output_dir:dict, json_dir:dict, data_link_dir
                             variable_name = conf1['variable_name'],
                             start_date = d1, 
                             ingest_days = 1, 
-                            location_ids = locations,
+                            location_ids = locations[dataset]['secondary_location_id'].tolist(),
                             json_dir = str(json_dir[dataset]),
                             output_parquet_dir = str(output_dir[dataset]),
                             nwm_version = version,
@@ -193,7 +204,10 @@ def retrieve_nwm_fcsts(conf: dict, output_dir:dict, json_dir:dict, data_link_dir
                             ignore_missing_file = conf2['ignore_missing_file'],
                             overwrite_output = conf2['overwrite_output'],
                         )
-                
+
+                    # clean up memory
+                    gc.collect() 
+
                 logger.info(f'  NWM forecast data are saved in parquet files at: {output_dir[dataset]}')
 
             for c1 in cycles:
