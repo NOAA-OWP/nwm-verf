@@ -83,7 +83,7 @@ def retrieve_usgs_obs(locations:dict, conf: dict, output_dir:Path):
         start_date = conf1['forecast_start_date'][i1]
         end_date = conf1['forecast_end_date'][i1]
         win1 = get_nwm_fcst_window(config)
-        end_date = pd.Timestamp(end_date) + pd.Timedelta(win1, unit="hours")
+        end_date = pd.Timestamp(end_date) + pd.Timedelta(win1 + 24, unit="hours")
         dates = dates + create_hour_sequence(start_date, end_date, start_hour=0, end_hour=23, freq_hour=24)
 
     dates = sorted(list(set(dates)))

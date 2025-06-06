@@ -101,4 +101,8 @@ def create_pairs(data_paths: dict, dataset: str, nwm_version:str, group_size=200
         # then calculate lead times and export paired data by group (to avoid potential memory issues)
         export_location_groups_with_lead_time(db_path, pair_file, table_name="joined_timeseries", group_size=group_size)
 
+        # remove the temporay database
+        if Path(db_path).exists():
+            db_path.unlink()
+
     return pair_file   
