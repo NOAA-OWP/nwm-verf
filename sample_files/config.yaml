@@ -16,29 +16,29 @@ general:
   location_set_name: new_test
 
   # [optional] list of usgs gage IDs or NWM links IDs; if blank, a location_list_file must be provided in 'file_paths' section
-  # if location_list and location_list_file are provided, location_list takes precedence
+  # if both location_list and location_list_file are provided, location_list takes precedence
   location_list:
 
   # [optional] must be specified if locaiton_list is not blank; currently supported options: usgs_gage, nwm30_link 
   location_type:
 
   variable_name: streamflow # currently only 'streamflow' is supported
-  nwm_configuration: short_range   # Currently, only short_range is supported
+  nwm_configuration: short_range   # Currently, only short_range, short_range_hawaii, and short_range_puertorico are supported
 
-  # user-specified name of datasets (to be used for creating sub-folders for datasets and plots)
+  # user-specified name of datasets (used for creating sub-folders for datasets and plots)
   # must be a list of one or more strings
   dataset_name: [v3_sep, v3_oct]
 
-  # list of NWM versions; list must have the same length as 'dataset_name'. Currently only option is "nwm30"
+  # list of NWM versions; must have the same length as 'dataset_name'. Currently only option is "nwm30"
   nwm_version: [nwm30, nwm30]
 
   # list of start/end dates for forecast verification period; list must have the same length as 'dataset_name'
-  # date ranges specified must be applicable to the corresponding NWM archive in Google cloud 
+  # date ranges specified must be applicable to the corresponding NWM archive in Google Cloud 
   forecast_start_date: ['2024-09-01', '2024-10-01']
   forecast_end_date: ['2024-09-01', '2024-10-01']
 
 #### configurations for various file paths
-# see some sample files at ngen-verf/sample_files/gage_files
+# sample files can be obtained from repo at ngen-verf/sample_files/gage_files
 file_paths:
 
   # root directory to store the downloaded NWM forecast and flow observation data
@@ -47,23 +47,24 @@ file_paths:
   # [optional] but either location_list (in 'general' section) or location_list_file must be specifed
   # tab or comma delimited csv file, and must contain either a "gage" or 
   # a "link" column specifying the locations to conduct verification for, with NWM version indicated in column name (e.g., nwm30_link) 
-  location_list_file: /home/yuqiong.liu/work/data/ngen-verf/usgs_gages_link_CONUS_calib100.csv
+  location_list_file: /home/yuqiong.liu/work/Gitlab/ngen-verf/sample_files/gage_files/usgs_gages_link_CONUS_calib100.csv # a sample of 100 calibrated locations over conus
+  #location_list_file: usgs_gage_link_all_CONUS.tsv #all gages for CONUS domain
 
   # parquet files containing the crosswalk between NWM feature_id and usgs gage id
   # note a crosswalk file should be provided for each NWM version listed in 'general/nwm_version'
-  # see utils/create_cralib_basin_group1osswalk.py on how the sample crosswalk parquet was created
+  # see utils/create_crosswalk.py on how the sample crosswalk parquet was created
+  # sample file usgs_nwm30_crosswalk_all_domains.parquet includes 8866 gages
   crosswalk_file:
     nwm30: 
-      /home/yuqiong.liu/work/data/ngen-verf/crosswalks/usgs_nwm30_crosswalk_CONUS.parquet
+      /home/yuqiong.liu/work/Gitlab/ngen-verf/sample_files/gage_files/usgs_nwm30_crosswalk_all_domains.parquet
     #nwm40:
 
-  # meta data for USGS gages (sample file ngen-verf/sample_files/gage_files/gages_metadata_all_domains.csv contains 8660 USGS gages)
-  gage_meta_file: /home/yuqiong.liu/work/data/ngen-verf/gages_metadata_all_domains.csv
+  # meta data for USGS gages (sample file gages_metadata_all_domains.csv includes 8660 USGS gages)
+  gage_meta_file: /home/yuqiong.liu/work/Gitlab/ngen-verf/sample_files/gage_files/gages_metadata_all_domains.csv
 
   # geometry (point lat/lon) for USGS gages; see utils/create_geometry.py on how the sample geometry parquet was created
-  # sample file ngen-verf/sample_files/gage_files/usgs_point_geometry_CONUS.parquet contains 8186 USGS gages
-  # the sample file can be used to obtain more locations for verfication (other than those provided in the test dataset)
-  geometry_file: /home/yuqiong.liu/work/data/ngen-verf/geometry/usgs_point_geometry_CONUS.parquet
+  # sample file usgs_point_geometry_CONUS.parquet includes 8186 USGS gages
+  geometry_file: /home/yuqiong.liu/work/Gitlab/ngen-verf/sample_files/gage_files/usgs_point_geometry_all_domains.parquet
 
 #### configurations for retrieving NWM forecast data (typically no need to change)
 nwm_forecast:
@@ -104,7 +105,7 @@ pair_data:
   # whether to overwrite existing joined parquet files
   overwrite: true
 
-  # break the location list into smaller groups to avoid potential memory issues (and speed up processing)
+  # break large location list into smaller groups (for pair_data and cacl_metrics steps) to avoid potential memory issues and to speed up processing
   group_size: 200
 
 #### configuration for metrics calculation
@@ -123,8 +124,8 @@ metrics:
   #metric_subset: [KGE, NSE, CORR, NNSE]
   metric_subset: 'all'
 
-  # list of metrics to be excluded from calculation (leave to be blank if no need to exclude any metrics)
-  # here the event-based metrics are excluded because they take a lot of time to run
+  # list of metrics to be excluded from calculation (leave blank if no need to exclude any metrics)
+  # here the event-based metrics are excluded because they are time consuming to run
   metric_exclude: [PKBIAS, PKTE, EVBIAS, FBIAS]
 
   # non-exceedance probability threshold of streamflow to be used for categorical metrics in ngen.eval
@@ -151,7 +152,6 @@ plots:
 
     # list of metrics to create histogram plots for
     metric_subset: [KGE, NSE, CORR, NNSE]
-    #metric_subset: [PBIAS]
 
     # for each metric, define list of bin edges for generating the histogram plot
     # For 'KGE','NSE','CORR' and 'NNSE', default bins (see settings.py) will be used if not defined. 
@@ -161,7 +161,6 @@ plots:
       NSE: [-inf, -1, -0.5, 0, 0.2, 0.4, 0.6, 0.8, 1.0]
       NNSE: [0, 0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0]
       CORR: [-1, -0.5, 0, 0.2, 0.4, 0.6, 0.8, 1.0]
-      #PBIAS: [-inf, -100, -20, 20, 60, 100, 200, inf]
 
     # list of lead times (in hours) to create histograms for
     lead_times: [1, 3, 5, 10, 15, 18, 1-5, 1-12]
@@ -174,7 +173,6 @@ plots:
   boxplot: # the same comments for histogram apply here (except for binning)
     plot: true
     metric_subset: [KGE, NSE, CORR, NNSE]
-    #metric_subset: [PBIAS, RSR, RMSE, MAE]
 
     # Define an appropriate range (min/max) for each metric to scale the boxplot.
     # Default ranges (see settings.py) will be applied for 'KGE', 'NSE', 'CORR', and 'NNSE' if not specified.
@@ -200,7 +198,7 @@ plots:
     # list of metrics to create spatial maps for
     metric_subset: [KGE, NSE, CORR, NNSE]
 
-    # Define an appropriate range (min/max) for each metric to scale the spatial map
+    # Define an appropriate range (min/max) for each metric to scale the values for the spatial map
     scaling:
       KGE: [-0.5, 1]
       NSE: [-0.5, 1]

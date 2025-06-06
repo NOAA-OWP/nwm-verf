@@ -10,18 +10,13 @@ domains = ['CONUS', 'AK', 'HI', 'PR']
 # root dir for all data
 root_dir = Path('/home/yuqiong.liu/work/data/ngen-verf').resolve()
 
-# folder where the crosswalk parquet files are stored
-dir1 = Path(root_dir,'crosswalks').resolve()
-
-# folder to store the geometry parquet files
-dir2 = Path(root_dir,'geometry').resolve()
-
 # loop through the four domains
+gdf_all = gpd.GeoDataFrame()
 for d1 in domains:
 
     # get gage IDs from crosswalk parquet
-    cwt = pd.read_parquet(Path(dir1, 'usgs_nwm30_crosswalk_' + d1 + '.parquet'))
-    cwt.columns = ['gage','link']
+    cwt = pd.read_parquet(Path(root_dir, 'usgs_nwm30_crosswalk_all_domains.parquet'))
+    cwt.columns = ['domain','gage','link']
 
     # read gage metadata
     f1 = Path(root_dir,"gages_metadata_all_domains.csv").resolve(strict=True)
@@ -32,17 +27,22 @@ for d1 in domains:
 
     # filter with gages in crosswalk
     df = pd.merge(df,cwt,on='gage',how='inner')
-    print(len(df))
-    #df = df.loc[df['id'].isin(gages)]
 
-    # create geopandas dataframe with coordinates
+    # create geopandas dataframe with lat/lon coordinates
     gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.lon, df.lat), crs="EPSG:4326")
     gdf.drop(['lat','lon'], axis=1, inplace=True)
 
-    # save to parquet files
+    # rename column
     gdf.rename(columns={"gage":"id"},inplace=True)
-    print(gdf.columns)
-    gdf.to_parquet(Path(dir2, 'usgs_point_geometry_' + d1 + '.parquet'))
+
+    # make sure domain is the first column
+    gdf = gdf[['domain'] + [c1 for c1 in gdf.columns if c1 != 'domain']]
+
+    # add to overall GeoDataFrame for all domains
+    gdf_all = pd.concat([gdf_all, gdf], ignore_index=True)
+
+# save to parquet file
+gdf.to_parquet(Path(root_dir, 'usgs_point_geometry_all_domains.parquet'))
 
     # for conus domain, sample 100 calibration basins for testing verification capability
     # if d1=='CONUS':

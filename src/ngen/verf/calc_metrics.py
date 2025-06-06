@@ -207,7 +207,7 @@ def calc_metrics(conf: dict, data_paths: dict):
             f"Unsupported metric library: '{library}'. "
             f"Supported libraries are: {', '.join(sorted(supported_libraries))}."
         ) 
-    logger.info(f'Metrics will be calculated using {library} library')
+    logger.info(f'  Metrics will be calculated using {library} library')
 
     # loop through dataset to calculate metrics
     for dataset in conf['general']['dataset_name']:
@@ -223,7 +223,7 @@ def calc_metrics(conf: dict, data_paths: dict):
             pair_path = data_paths['joined'][dataset]
             pair_files = list(pair_path.parent.glob(f'{pair_path.stem}.group*.parquet'))
             for i1, pair_file in enumerate(pair_files):
-                logger.info(f'Calculating metrics for {dataset} group {i1} ...')            
+                logger.info(f'  Calculating metrics for {dataset} group {i1} ...')            
                 df_metrics = calc_metrics_group(conf['metrics'], pair_file, data_paths['geofile']) 
                 if i1 == 0:
                     df_metrics.to_parquet(metric_file, engine="fastparquet", index=False)

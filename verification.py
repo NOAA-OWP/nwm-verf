@@ -18,7 +18,7 @@ def timing_block(step_str:str):
     start = time()
     yield
     end = time()
-    logger.info(f"Execution time for {step_str}: {end - start} seconds")
+    logger.info(f"  Execution time for {step_str}: {end - start} seconds")
 
 if __name__ == "__main__":
     

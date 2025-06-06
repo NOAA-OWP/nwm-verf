@@ -46,6 +46,10 @@ def export_location_groups_with_lead_time(
         ORDER BY primary_location_id
     """).fetchall()
     location_ids = [loc[0] for loc in location_ids]
+
+    if len(location_ids) == 0:
+        raise Exception(f'ERROR: no primary_location_id found in the joined_timeseries database')
+    
     n_groups = math.ceil(len(location_ids) / group_size)
 
     # Split the list into n groups and process each group separately
@@ -53,7 +57,7 @@ def export_location_groups_with_lead_time(
         
         group_ids = location_ids[i * group_size:(i + 1) * group_size]
         group_file = output_path.with_name(output_path.stem + f".group{i}.parquet")
-        logger.info(f'Exporting paired data for group {i} locations to {group_file} ...')
+        logger.info(f'  Exporting paired data for group {i} locations to {group_file} ...')
 
         formatted_ids = ', '.join(f"'{loc}'" for loc in group_ids)
         

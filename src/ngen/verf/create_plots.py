@@ -147,7 +147,7 @@ def create_spatial_maps(conf:dict, data_paths: dict):
                 plt.savefig(fig_file, dpi=300, bbox_inches='tight')
                 plt.close(fig)
 
-    logger.info(f'Spatial maps created at: {fig_dir}')
+    logger.info(f'  Spatial maps created at: {fig_dir}')
 
 
 # create boxplot for each metric
@@ -205,7 +205,7 @@ def create_boxplots(conf:dict, data_paths: dict):
         fig_file = Path(fig_dir, file1)
         plt.savefig(fig_file)
 
-    logger.info(f'Boxplots created at: {fig_dir}')
+    logger.info(f'  Boxplots created at: {fig_dir}')
 
 def create_histograms(conf:dict, data_paths: dict):
 
@@ -271,4 +271,4 @@ def create_histograms(conf:dict, data_paths: dict):
             fig_file = Path(fig_dir, file1)
             plt.savefig(fig_file)
     
-    logger.info(f'Histograms created at: {fig_dir}')
+    logger.info(f'  Histograms created at: {fig_dir}')
