@@ -9,10 +9,10 @@ import numpy as np
 domains = ['CONUS', 'AK', 'HI', 'PR']
 
 # folder where NWMv30 route_link files are stored 
-dir1 = '/home/yuqiong.liu/work/data/NWMv3/Domain'
+dir1 = os.path.expanduser('~/work/data/NWMv3/Domain')
 
 # folder to store the crosswalk parquet files created
-dir2 = '/home/yuqiong.liu/work/data/ngen-verf'
+dir2 = os.path.expanduser('~/work/data/ngen-verf')
 if not os.path.isdir(dir2):
     os.makedirs(dir2)
 

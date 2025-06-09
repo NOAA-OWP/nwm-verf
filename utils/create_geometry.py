@@ -8,7 +8,7 @@ from pathlib import Path
 domains = ['CONUS', 'AK', 'HI', 'PR']
 
 # root dir for all data
-root_dir = Path('/home/yuqiong.liu/work/data/ngen-verf').resolve()
+root_dir = Path('~/work/data/ngen-verf').expanduser()
 
 # loop through the four domains
 gdf_all = gpd.GeoDataFrame()
@@ -64,7 +64,7 @@ gdf.to_parquet(Path(root_dir, 'usgs_point_geometry_all_domains.parquet'))
 #     gages = df1.loc[df1['calibration']]['gage'].str.replace("usgs-","").tolist()
 #     print(list(set(df1['agency'].to_list())))
 
-#     with open(Path('/home/yuqiong.liu/work/data/NWMv3', 'nwm_calib_gages_' + d1 + '.txt'),'w') as f:
+#     with open(Path('~/work/data/NWMv3', 'nwm_calib_gages_' + d1 + '.txt'),'w') as f:
 #         for g1 in gages:
 #             f.writelines(f'{g1}\n')
 
