@@ -13,19 +13,22 @@ __all__ = [
     "get_n_workers",
 ]
 
+# create datetime sequence given start date, end date, and frequency
 def create_hour_sequence(
         start_date: str, 
         end_date: str, 
-        by_hours: Optional[int] = 1,
+        start_hour: int,
+        end_hour: int,
+        freq_hour: int,
 ) -> list:
 
-    start_dt = pd.to_datetime(start_date)
-    end_dt = pd.to_datetime(end_date) + timedelta(hours=23)
+    start_dt = pd.to_datetime(start_date).normalize() + timedelta(hours = start_hour)
+    end_dt = pd.to_datetime(end_date).normalize() + timedelta(hours = end_hour)
 
     hours = []
     while start_dt <= end_dt:
         hours.append(start_dt)
-        start_dt += timedelta(hours=by_hours)
+        start_dt += timedelta(hours=freq_hour)
 
     return hours
 

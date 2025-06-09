@@ -6,8 +6,11 @@ import gc
 from dask.distributed import Client, LocalCluster  #install with 'pip install dask[complete]'
 import teehr.loading.nwm.nwm_points as tlp
 from teehr.loading.usgs.usgs import usgs_to_parquet
+from datetime import datetime
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from aiohttp.client_exceptions import ServerDisconnectedError, ClientOSError
 from .utils import create_hour_sequence, get_n_workers
-from .nwm_configs import get_nwm_fcst_window, get_nwm_cycle_frequency
+from .nwm_configs import get_nwm_fcst_window, get_nwm_cycle_config
 
 import warnings
 warnings.filterwarnings("ignore", message="Compute Engine Metadata server unavailable")
@@ -15,6 +18,31 @@ warnings.filterwarnings("ignore", message="Compute Engine Metadata server unavai
 import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+# Mute Dask logs
+logging.getLogger("distributed").setLevel(logging.WARNING)
+logging.getLogger("dask").setLevel(logging.WARNING)
+logging.getLogger("tornado.application").setLevel(logging.ERROR)
+
+
+# Retry on network/server disconnection-related errors
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=2, min=1, max=30),  # exponential backoff
+    retry=retry_if_exception_type((ServerDisconnectedError, ClientOSError)),
+    reraise=True
+)
+def safe_fetch_usgs(site_codes:list, dates:list, conf:dict, out_dir: str):
+
+    usgs_to_parquet(
+        sites = site_codes,
+        start_date = min(dates),
+        end_date = max(dates),
+        output_parquet_dir = out_dir,
+        chunk_by = conf['chunk_by'],
+        overwrite_output = conf['overwrite_output']
+    )
+
 
 def retrieve_usgs_obs(locations:dict, conf: dict, output_dir:Path):
 
@@ -27,6 +55,9 @@ def retrieve_usgs_obs(locations:dict, conf: dict, output_dir:Path):
     Data retrieved will be saved in parquet files by chunk (e.g., month) in the data directory defined in conf
 
     """
+
+    # get the list of unique USGS gage IDs
+    list_usgs = list({item for subdict in locations.values() for item in subdict['primary']})
 
     # get some general information
     conf1 = conf['general']
@@ -41,7 +72,7 @@ def retrieve_usgs_obs(locations:dict, conf: dict, output_dir:Path):
         for p1 in periods:
             if len(p1) == 1:
                 p1 = [p1[0], p1[0]]
-            dates0 = dates0 + create_hour_sequence(p1[0], p1[1], by_hours=24)
+            dates0 = dates0 + create_hour_sequence(p1[0], p1[1], start_hour=0, end_hour=23, freq_hour=24)
         dates0 = sorted(list(set(dates0)))
         dates0 = [x.strftime('%Y-%m-%d') for x in dates0]  
         logger.info(f'  Existing USGS parquet files for {min(dates0)} to {max(dates0)} will be used')   
@@ -52,8 +83,8 @@ def retrieve_usgs_obs(locations:dict, conf: dict, output_dir:Path):
         start_date = conf1['forecast_start_date'][i1]
         end_date = conf1['forecast_end_date'][i1]
         win1 = get_nwm_fcst_window(config)
-        end_date = pd.Timestamp(end_date) + pd.Timedelta(win1, unit="hours")
-        dates = dates + create_hour_sequence(start_date, end_date, by_hours=24)
+        end_date = pd.Timestamp(end_date) + pd.Timedelta(win1 + 24, unit="hours")
+        dates = dates + create_hour_sequence(start_date, end_date, start_hour=0, end_hour=23, freq_hour=24)
 
     dates = sorted(list(set(dates)))
     dates = [x.strftime('%Y-%m-%d') for x in dates]     
@@ -83,27 +114,34 @@ def retrieve_usgs_obs(locations:dict, conf: dict, output_dir:Path):
                     list1 = [dates2[i1]]
         date_list.append(list1)    
 
+        #determine n_workers dynamically
+        #n_workers = max(os.cpu_count() - 2, 1)
+        mem_limit = conf2['memory_per_worker_gb']
+        n_workers = get_n_workers(mem_limit)
+
         # loop through the date chunks to download USGS data
         for d1 in date_list:
 
             logger.info(f'  Downloading USGS data for {min(d1)} to {max(d1)} ...')
 
-            # use a local dask cluster to fetch the data; determine n_workers dynamically
-            #n_workers = max(os.cpu_count() - 2, 1)
-            mem_limit = conf2['memory_per_worker_gb']
-            n_workers = get_n_workers(mem_limit)
+            # use a local dask cluster to fetch the data 
             with LocalCluster(n_workers=n_workers,
                         processes=True, memory_limit=f"{mem_limit}GB", dashboard_address=None,
             ) as cluster, Client(cluster) as client:
-                
-                usgs_to_parquet(
-                    sites = locations[conf1['location_set_name']]['primary_location_id'].tolist(),
-                    start_date = min(d1),
-                    end_date = max(d1),
-                    output_parquet_dir = str(output_dir),
-                    chunk_by = conf2['chunk_by'],
-                    overwrite_output = conf2['overwrite_output']
-                )
+
+                try:
+                    safe_fetch_usgs(list_usgs, d1, conf2, str(output_dir))
+                except (ServerDisconnectedError, ClientOSError) as e:
+                    logger.warning(f"Failed to fetch USGS data after retries: {e}")
+          
+                # usgs_to_parquet(
+                #     sites = list_usgs,
+                #     start_date = min(d1),
+                #     end_date = max(d1),
+                #     output_parquet_dir = str(output_dir),
+                #     chunk_by = conf2['chunk_by'],
+                #     overwrite_output = conf2['overwrite_output']
+                # )
 
             # clean up memory
             gc.collect()
@@ -132,12 +170,17 @@ def retrieve_nwm_fcsts(locations:dict, conf: dict, data_paths:dict):
     conf2 = conf['nwm_forecast']
     config = conf1['nwm_configuration']
 
+    # determine n_workers dynamically
+    #n_workers = max(os.cpu_count() - 2, 1)
+    mem_limit = conf2['memory_per_worker_gb']
+    n_workers = get_n_workers(mem_limit)
+
     # loop through datasets
     for i1, dataset in enumerate(conf1['dataset_name']):
         
-        #i1 = conf1['dataset_name'].index(dataset)
-        fetch = conf2['fetch_fcst'][i1]
+        locations_nwm = locations[dataset]['secondary']
 
+        fetch = conf2['fetch_fcst'][i1]
         if fetch:
 
             version = conf1['nwm_version'][i1]
@@ -145,9 +188,9 @@ def retrieve_nwm_fcsts(locations:dict, conf: dict, data_paths:dict):
             end_date = conf1['forecast_end_date'][i1]
 
             # get forecast configuration and cycle frequency
-            fcst_freq = get_nwm_cycle_frequency(config)
+            cycle_config = get_nwm_cycle_config(config)
 
-            logger.info(f'  ======== Fetch data for NWM dataset {dataset}: {version} {start_date} to {end_date} ==========')
+            logger.info(f'  ======== Fetch data for NWM dataset {dataset}: {version} {config} {start_date} to {end_date} ==========')
 
             # check existing parquet files for NWM forecasts
             parquet_files = glob.glob(str(output_dir[dataset]) +'/*.parquet')
@@ -155,7 +198,7 @@ def retrieve_nwm_fcsts(locations:dict, conf: dict, data_paths:dict):
             cycles0 = [pd.Timestamp(h1) for h1 in hours]
 
             # determine all cycles needed
-            cycles = create_hour_sequence(start_date, end_date, by_hours = fcst_freq)
+            cycles = create_hour_sequence(start_date, end_date, cycle_config['start_hr'], cycle_config['end_hr'], cycle_config['freq_hr'])
 
             # cycles not in existing parquet files 
             cycles1 = [c1 for c1 in cycles if c1 not in cycles0]
@@ -177,10 +220,7 @@ def retrieve_nwm_fcsts(locations:dict, conf: dict, data_paths:dict):
 
                     logger.info(f'  Retriving NWM forecast data for {d1} ...')
 
-                    # use a local dask cluster to fetch the data; determine n_workers dynamically
-                    #n_workers = max(os.cpu_count() - 2, 1)
-                    mem_limit = conf2['memory_per_worker_gb']
-                    n_workers = get_n_workers(mem_limit)
+                    # use a local dask cluster to fetch the data
                     with LocalCluster(n_workers=n_workers,
                                 processes=True, memory_limit=f"{mem_limit}GB", dashboard_address=None,
                     ) as cluster, Client(cluster) as client:
@@ -192,7 +232,7 @@ def retrieve_nwm_fcsts(locations:dict, conf: dict, data_paths:dict):
                             variable_name = conf1['variable_name'],
                             start_date = d1, 
                             ingest_days = 1, 
-                            location_ids = locations[dataset]['secondary_location_id'].tolist(),
+                            location_ids = locations_nwm,
                             json_dir = str(json_dir[dataset]),
                             output_parquet_dir = str(output_dir[dataset]),
                             nwm_version = version,
@@ -203,6 +243,7 @@ def retrieve_nwm_fcsts(locations:dict, conf: dict, data_paths:dict):
                             stepsize = conf2['stepsize'],
                             ignore_missing_file = conf2['ignore_missing_file'],
                             overwrite_output = conf2['overwrite_output'],
+
                         )
 
                     # clean up memory
