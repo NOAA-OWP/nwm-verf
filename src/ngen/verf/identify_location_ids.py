@@ -29,9 +29,11 @@ def get_link_by_gage(gages: List[str], crosswalk_file: str):
     if len(df1) < len(df):
         miss_ids = [x for x in df['gage'].tolist() if x not in df1['gage'].tolist()]
         logger.info(f'  Link ID for gages {miss_ids} are not found in crosswalk file {crosswalk_file}')
-    locations = [int(x[1]) for x in df1['secondary_location_id'].str.split('-')]  
+    
+    gages1 = [x[1] for x in df1['gage'].str.split('-')]
+    links1 = [int(x[1]) for x in df1['secondary_location_id'].str.split('-')]  
 
-    return miss_ids, locations 
+    return gages1, links1 
 
 # get location link IDs (NWM feature or reach id) from locations in a file
 def get_link_id_from_file(
@@ -211,11 +213,8 @@ def identify_locations(conf:dict) -> dict:
 
         # get NWM link ID based on USGS gage ID
         nwm_version = conf['general']['nwm_version'][dataset_idx]
-        missed_ids, locations_nwm = get_link_by_gage(locations_usgs, conf['file_paths']['crosswalk_file'][nwm_version])
-        if len(missed_ids) > 0:
-            locations_usgs = [x for x in locations_usgs if x not in missed_ids]
-
-        logger.info(f'  Total number of locations for dataset {dataset}: {len(locations_nwm)}')
-        locations[dataset] = pd.DataFrame({'primary': locations_usgs, 'secondary': locations_nwm})
+        locations_usgs1, locations_nwm1 = get_link_by_gage(locations_usgs, conf['file_paths']['crosswalk_file'][nwm_version])
+        logger.info(f'  Total number of locations for dataset {dataset}: {len(locations_nwm1)}')
+        locations[dataset] = {'primary': locations_usgs1, 'secondary': locations_nwm1}
 
     return locations
