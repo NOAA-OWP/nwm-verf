@@ -50,11 +50,6 @@ file_paths:
   # sample files for different domains are available at ngen-verf/sample_files/gage_files
   # below is a sample file with 100 calibrated USGS gages for CONUS domain
   location_list_file: /home/yuqiong.liu/work/Gitlab/ngen-verf/sample_files/gage_files/usgs_gages_link_CONUS_calib100.csv 
-  #location_list_file: usgs_gage_link_all_CONUS.tsv #all gages for CONUS domain
-  #location_list_file: usgs_gage_link_all_AK.tsv #all gages for Alaska domain
-  #location_list_file: usgs_gage_link_all_HI.tsv #all gages for Hawaii domain
-  #location_list_file: usgs_gage_link_all_PR.tsv #all gages for Puerto Rico domain
-  #location_list_file: usgs_gage_link_all_USVI.tsv #all gages for US Virgin Islands domain
 
   # parquet files containing the crosswalk between NWM feature_id and usgs gage id
   # note a crosswalk file should be provided for each NWM version listed in 'general/nwm_version'
