@@ -23,7 +23,7 @@ general:
   location_type:
 
   variable_name: streamflow # currently only 'streamflow' is supported
-  nwm_configuration: short_range   # Currently, only short_range, short_range_hawaii, and short_range_puertorico are supported
+  nwm_configuration: short_range   # Currently, only short_range, short_range_alaska, short_range_hawaii, and short_range_puertorico are supported
 
   # user-specified name of datasets (used for creating sub-folders for datasets and plots)
   # must be a list of one or more strings
@@ -46,9 +46,15 @@ file_paths:
 
   # [optional] but either location_list (in 'general' section) or location_list_file must be specifed
   # tab or comma delimited csv file, and must contain either a "gage" or 
-  # a "link" column specifying the locations to conduct verification for, with NWM version indicated in column name (e.g., nwm30_link) 
-  location_list_file: /home/yuqiong.liu/work/Gitlab/ngen-verf/sample_files/gage_files/usgs_gages_link_CONUS_calib100.csv # a sample of 100 calibrated locations over conus
+  # a "link" column (e.g., nwm30_link) specifying the locations to conduct verification for 
+  # sample files for different domains are available at ngen-verf/sample_files/gage_files
+  # below is a sample file with 100 calibrated USGS gages for CONUS domain
+  location_list_file: /home/yuqiong.liu/work/Gitlab/ngen-verf/sample_files/gage_files/usgs_gages_link_CONUS_calib100.csv 
   #location_list_file: usgs_gage_link_all_CONUS.tsv #all gages for CONUS domain
+  #location_list_file: usgs_gage_link_all_AK.tsv #all gages for Alaska domain
+  #location_list_file: usgs_gage_link_all_HI.tsv #all gages for Hawaii domain
+  #location_list_file: usgs_gage_link_all_PR.tsv #all gages for Puerto Rico domain
+  #location_list_file: usgs_gage_link_all_USVI.tsv #all gages for US Virgin Islands domain
 
   # parquet files containing the crosswalk between NWM feature_id and usgs gage id
   # note a crosswalk file should be provided for each NWM version listed in 'general/nwm_version'
