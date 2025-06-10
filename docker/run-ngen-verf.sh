@@ -91,6 +91,17 @@ if [ $# -ge 1 ]; then
   shift 1
 fi
 
+# patch teehr (point_utils.py) prior to running the verification script
+TARGET_FILE=$(find ${VIRTUAL_ENV} -type f -name "*.py" | grep 'point_utils.py')
+if [[ -f "$TARGET_FILE" ]]; then
+  if grep -q 'feature_ids = ds\.feature_id\.astype("int32")\.values' "$TARGET_FILE"; then
+    sed -i 's/feature_ids = ds\.feature_id\.astype("int32")\.values/feature_ids = ds.feature_id.values/' "$TARGET_FILE"
+    echo "Patched $TARGET_FILE"
+  fi
+else
+  echo "Target file ${TARGET_FILE} not found! Please check the venv path."
+fi
+
 # Run the Python script, redirecting its output if an output file is provided
 echo "   Running $(basename "$SCRIPT_PATH") with input file: $CONFIG_FILE"
 if [ -z "$STDOUT_FILE" ]; then
