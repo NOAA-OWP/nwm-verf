@@ -91,7 +91,7 @@ if [ $# -ge 1 ]; then
   shift 1
 fi
 
-# path teehr (point_utils.py) prior to running the verification script
+# patch teehr (point_utils.py) prior to running the verification script
 TARGET_FILE=$(find ${VIRTUAL_ENV} -type f -name "*.py" | grep 'point_utils.py')
 if [[ -f "$TARGET_FILE" ]]; then
   if grep -q 'feature_ids = ds\.feature_id\.astype("int32")\.values' "$TARGET_FILE"; then
