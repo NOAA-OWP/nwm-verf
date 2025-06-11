@@ -1,7 +1,7 @@
 
 import pandas as pd
 from pathlib import Path
-from typing import Union, Optional, Dict
+from typing import Union, Optional, Dict, List
 import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -18,19 +18,22 @@ __all__ = [
 
 
 # get location link ID based on gage ID and crosswalk 
-def get_link_by_gage(gages: str, crosswalk_file: str):
+def get_link_by_gage(gages: List[str], crosswalk_file: str):
 
     cwt = pd.read_parquet(crosswalk_file)
     cwt.rename(columns={'primary_location_id':'gage'}, inplace=True)
     
     df = pd.DataFrame(list(map('usgs-'.__add__,gages)), columns=['gage'])
     df1 = df.merge(cwt,on='gage',how='inner')
+    miss_ids = []
     if len(df1) < len(df):
         miss_ids = [x for x in df['gage'].tolist() if x not in df1['gage'].tolist()]
         logger.info(f'  Link ID for gages {miss_ids} are not found in crosswalk file {crosswalk_file}')
-    locations = [int(x[1]) for x in df1['secondary_location_id'].str.split('-')]  
+    
+    gages1 = [x[1] for x in df1['gage'].str.split('-')]
+    links1 = [int(x[1]) for x in df1['secondary_location_id'].str.split('-')]  
 
-    return locations 
+    return gages1, links1 
 
 # get location link IDs (NWM feature or reach id) from locations in a file
 def get_link_id_from_file(
@@ -146,7 +149,7 @@ def get_gage_id_from_file(
     f1 = Path(id_file).absolute()
     if not f1.exists():
         raise FileNotFoundError(f1)
-    df = pd.read_csv(f1, sep=None,comment='#',engine='python')
+    df = pd.read_csv(f1, sep=None,comment='#', dtype={'gage': str}, engine='python')
     df.columns = [x.lower() for x in df.columns]
     locations = []
     if 'gage' in df.columns:
@@ -191,11 +194,27 @@ def get_usgs_gage_ids(conf:dict) -> list:
     if not gage_meta_file.exists():
         raise FileNotFoundError(gage_meta_file)
     df = pd.read_csv(gage_meta_file,sep=None,comment='#',engine='python')
-    gages = [x for x in locations if df[df['gage']==x]['agency'].iloc[0] == 'USGS']
+    #gages = [x for x in locations if df[df['gage']==x]['agency'].iloc[0] == 'USGS']
+    gages = [x for x in locations if not df[df['gage'] == x].empty and df[df['gage'] == x]['agency'].iloc[0] == 'USGS']
+
     missed = [x for x in locations if x not in gages]
     if len(missed)>0:
         logger.info(f'  The following non-usgs locations will be dropped {missed}')
-
-    logger.info(f'  Total number of USGS locations: {len(gages)}')
     
     return gages 
+
+def identify_locations(conf:dict) -> dict:
+
+    # get USGS gage ID for verification locations
+    locations_usgs = get_usgs_gage_ids(conf) 
+
+    locations = {}
+    for dataset_idx, dataset in enumerate(conf['general']['dataset_name']):
+
+        # get NWM link ID based on USGS gage ID
+        nwm_version = conf['general']['nwm_version'][dataset_idx]
+        locations_usgs1, locations_nwm1 = get_link_by_gage(locations_usgs, conf['file_paths']['crosswalk_file'][nwm_version])
+        logger.info(f'  Total number of locations for dataset {dataset}: {len(locations_nwm1)}')
+        locations[dataset] = {'primary': locations_usgs1, 'secondary': locations_nwm1}
+
+    return locations
