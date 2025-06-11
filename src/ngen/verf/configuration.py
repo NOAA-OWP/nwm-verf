@@ -10,6 +10,7 @@ class GeneralConfig(BaseModel):
     location_set_name: str
     location_list: Optional[List[Union[str, int]]] = None
     location_type: Optional[str] = None
+    location_group_size: Optional[int] = 500
     variable_name: str
     nwm_configuration: str
     dataset_name: List[str]
@@ -38,23 +39,27 @@ class NWMForecastConfig(BaseModel):
     stepsize: Optional[int] = 100
     ignore_missing_file: bool
     overwrite_output: bool
+    memory_per_worker_gb: Optional[int] = 3  # configurable memory (in GB) assigned to each worker
 
 
 class FlowObservationConfig(BaseModel):
     """ Data model for the 'flow_observation' section of the config file """
-    usgs: Dict[str, Union[str, bool]]
+    usgs: Dict[str, Union[str, int, bool]]
 
 
 class PairDataConfig(BaseModel):
     """ Data model for the 'pair_data' section of the config file """
-    overwrite: bool
+
+    overwrite: bool    
+    group_size: Optional[int] = 200
 
 
 class MetricsConfig(BaseModel):
     """ Data model for the 'metrics' section of the config file """
     overwrite: bool
     library: str
-    metric_subset: List[str]
+    #metric_subset: Optional[Union[str,List[str]]] = 'all'
+    metric_subset: Union[str,List[str]]
     flow_threshold_categorical: Optional[float] = 0.9
     flow_threshold_event: Optional[float] = 0.9
     lead_times: List[Union[str, int]]
@@ -112,7 +117,7 @@ def load_and_validate_yaml(file_path: str):
             return data
             #return validated_config
     except ValidationError as e:
-        print("Validation Error:", e)
+        raise Exception(f'Validation Error: {e}')
     except Exception as e:
-        print("Error loading YAML file:", e)
+        raise Exception(f'Error loading YAML file: {e}')
 
