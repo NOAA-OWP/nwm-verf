@@ -10,7 +10,7 @@ permissions:
   security-events: write
 
 env:
-  DOCKER_IMAGE_NAME: ghcr.io/${{ github.repository }}
+  DOCKER_IMAGE_NAME: ghcr.io/${{ toLower(github.repository) }}
   DOCKER_IMAGE_TAG: ${{ github.ref_name }}
 
 jobs:
@@ -50,7 +50,6 @@ jobs:
           context: .
           push: ${{ github.event_name == 'push' }}
           tags: |
-            ${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
             ${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}
           build-args: |
             NWM_EVAL_MGR_TAG=${{ steps.set_tag.outputs.tag }}
