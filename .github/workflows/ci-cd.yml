@@ -19,6 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     container: docker:latest
     steps:
+      - name: normalize image name to lowercase
+        run: echo "DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME,,}" >> $GITHUB_ENV
+
       - uses: actions/checkout@v4
 
       - name: Set NWM_EVAL_MGR_TAG
@@ -61,6 +64,8 @@ jobs:
     runs-on: ubuntu-latest
     container: docker:latest
     steps:
+      - name: normalize image name to lowercase
+        run: echo "DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME,,}" >> $GITHUB_ENV
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.28.0
         with:
@@ -80,6 +85,8 @@ jobs:
     runs-on: ubuntu-latest
     container: docker:latest
     steps:
+      - name: normalize image name to lowercase
+        run: echo "DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME,,}" >> $GITHUB_ENV
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -100,6 +107,8 @@ jobs:
     runs-on: ubuntu-latest
     container: docker:latest
     steps:
+      - name: normalize image name to lowercase
+        run: echo "DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME,,}" >> $GITHUB_ENV
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
