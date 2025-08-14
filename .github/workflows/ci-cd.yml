@@ -10,7 +10,7 @@ permissions:
   security-events: write
 
 env:
-  DOCKER_IMAGE_NAME: ghcr.io/${{ toLower(github.repository) }}
+  DOCKER_IMAGE_NAME: ghcr.io/${{ github.repository }}
   DOCKER_IMAGE_TAG: ${{ github.ref_name }}
 
 jobs:
