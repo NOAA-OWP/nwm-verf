@@ -20,7 +20,7 @@ jobs:
     container: docker:latest
     steps:
       - name: normalize image name to lowercase
-        run: echo "DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME,,}" >> $GITHUB_ENV
+        run: echo "DOCKER_IMAGE_NAME=$(printf '%s' "$DOCKER_IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v4
 
@@ -65,7 +65,8 @@ jobs:
     container: docker:latest
     steps:
       - name: normalize image name to lowercase
-        run: echo "DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME,,}" >> $GITHUB_ENV
+        run: echo "DOCKER_IMAGE_NAME=$(printf '%s' "$DOCKER_IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.28.0
         with:
@@ -86,7 +87,8 @@ jobs:
     container: docker:latest
     steps:
       - name: normalize image name to lowercase
-        run: echo "DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME,,}" >> $GITHUB_ENV
+        run: echo "DOCKER_IMAGE_NAME=$(printf '%s' "$DOCKER_IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -108,7 +110,8 @@ jobs:
     container: docker:latest
     steps:
       - name: normalize image name to lowercase
-        run: echo "DOCKER_IMAGE_NAME=${DOCKER_IMAGE_NAME,,}" >> $GITHUB_ENV
+        run: echo "DOCKER_IMAGE_NAME=$(printf '%s' "$DOCKER_IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
