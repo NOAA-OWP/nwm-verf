@@ -1,6 +1,8 @@
+name: nwm-verf-mgr CI/CD Pipeline
+
 on:
   push:
-    branches: [development, main, release-candidate]
+    branches: ['*']
     tags: ['*']
   pull_request:
 
@@ -10,32 +12,21 @@ permissions:
   security-events: write
 
 env:
-  DOCKER_IMAGE_NAME: ghcr.io/${{ github.repository }}
+  REGISTRY: "ghcr.io"
+  DOCKER_IMAGE_NAME: "ngwpc/nwm-verf-mgr"
   DOCKER_IMAGE_TAG: ${{ github.ref_name }}
 
 jobs:
   build:
     name: build
-    runs-on: ubuntu-latest
-    container: docker:latest
+    if: >
+      startsWith(github.ref, 'refs/tags/') ||
+      github.ref == 'refs/heads/development' ||
+      github.ref == 'refs/heads/main' ||
+      github.ref == 'refs/heads/release-candidate'
+    runs-on: self-hosted
     steps:
-      - name: normalize image name to lowercase
-        run: echo "DOCKER_IMAGE_NAME=$(printf '%s' "$DOCKER_IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
-
       - uses: actions/checkout@v4
-
-      - name: Set NWM_EVAL_MGR_TAG
-        id: set_tag
-        run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            TAG_VALUE="${GITHUB_REF_NAME}"
-          elif [[ "${GITHUB_REF_NAME}" == "release-candidate" || "${GITHUB_REF_NAME}" == "master" ]]; then
-            TAG_VALUE="${GITHUB_REF_NAME}"
-          else
-            TAG_VALUE="development"
-          fi
-          echo "Resolved NWM_EVAL_MGR_TAG=${TAG_VALUE}"   # print to logs
-          echo "tag=${TAG_VALUE}" >> $GITHUB_OUTPUT       # set step output
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -47,30 +38,39 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and (for push events) push
+      - name: Build Docker image with git tag for Docker tag
+        if: startsWith(github.ref, 'refs/tags/')
         uses: docker/build-push-action@v6
         with:
           context: .
           push: ${{ github.event_name == 'push' }}
           tags: |
-            ${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}
+            ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}
           build-args: |
-            NWM_EVAL_MGR_TAG=${{ steps.set_tag.outputs.tag }}
+            # We are simply using the nwm-verf-mgr tag for NWM_EVAL_MGR_TAG (this is how it was done in GitLab)
+            # We might need to pass in NWM_EVAL_MGR_TAG dynamically in the future
+            NWM_EVAL_MGR_TAG=${{ env.DOCKER_IMAGE_TAG }}
+
+      - name: Build Docker image with branch for Docker tag
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}
+
 
   container_scanning:
     name: container_scanning
     if: github.event_name == 'push'
     needs: build
-    runs-on: ubuntu-latest
-    container: docker:latest
+    runs-on: self-hosted
     steps:
-      - name: normalize image name to lowercase
-        run: echo "DOCKER_IMAGE_NAME=$(printf '%s' "$DOCKER_IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
-
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: '${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}'
+          image-ref: '${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}'
           format: 'sarif'
           output: 'trivy-results.sarif'
 
@@ -83,12 +83,8 @@ jobs:
     name: deploy
     if: github.event_name == 'push' && github.ref == 'refs/heads/development'
     needs: [build, container_scanning]
-    runs-on: ubuntu-latest
-    container: docker:latest
+    runs-on: self-hosted
     steps:
-      - name: normalize image name to lowercase
-        run: echo "DOCKER_IMAGE_NAME=$(printf '%s' "$DOCKER_IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
-
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -98,20 +94,16 @@ jobs:
 
       - name: Tag and push :latest
         run: |
-          docker pull ${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
-          docker tag  ${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} ${{ env.DOCKER_IMAGE_NAME }}:latest
-          docker push ${{ env.DOCKER_IMAGE_NAME }}:latest
+          docker pull ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}
+          docker tag  ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }} ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+          docker push ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest
 
   release:
     name: release
     if: startsWith(github.ref, 'refs/tags/')
     needs: [build, container_scanning]
-    runs-on: ubuntu-latest
-    container: docker:latest
+    runs-on: self-hosted
     steps:
-      - name: normalize image name to lowercase
-        run: echo "DOCKER_IMAGE_NAME=$(printf '%s' "$DOCKER_IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
-
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -121,6 +113,6 @@ jobs:
 
       - name: Ensure image is tagged with ref_name
         run: |
-          docker pull ${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
-          docker tag  ${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} ${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}
-          docker push ${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}
+          docker pull ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}
+          docker tag  ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }} ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}
+          docker push ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}
