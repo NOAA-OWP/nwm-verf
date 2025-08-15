@@ -111,8 +111,8 @@ jobs:
 
       - name: Tag and push :latest
         run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}
-          docker tag  ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }} ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+          docker pull ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}-test
+          docker tag  ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}-test ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest
           docker push ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest
 
   release:
