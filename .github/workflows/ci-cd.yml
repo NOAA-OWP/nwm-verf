@@ -113,9 +113,7 @@ jobs:
 
   deploy:
     name: deploy
-    if: >
-      (github.event_name == 'push' && github.ref == 'refs/heads/development') ||
-      (github.event_name == 'pull_request' && github.base_ref == 'development')
+    if: github.event_name == 'pull_request' && github.base_ref == 'development'
     needs: [setup, build, container_scanning]
     runs-on: ubuntu-latest
     steps:
