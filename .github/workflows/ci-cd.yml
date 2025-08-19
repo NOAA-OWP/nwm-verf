@@ -29,14 +29,12 @@ jobs:
         id: vars
         shell: bash
         run: |
-          ORG="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
-          REPO="$(basename "${GITHUB_REPOSITORY}")"
-          IMAGE_BASE="ghcr.io/${ORG}/${REPO}"
-          RAW_TAG="${GITHUB_REF_NAME}"
+          ...
           SAFE_TAG="$(echo "${RAW_TAG}" \
-            | tr '[:upper:]' '[:lower:]' \
-            | tr -c '[:alnum:]._-' '-' \
-            | cut -c1-128)"
+             | tr '[:upper:]' '[:lower:]' \
+             | tr -c '[:alnum:]._-' '-' \
+             | cut -c1-128)"
+          SAFE_TAG="${SAFE_TAG%-}"
           [ -n "$SAFE_TAG" ] || SAFE_TAG="build"
           echo "image_base=${IMAGE_BASE}" >> "$GITHUB_OUTPUT"
           echo "tag=${SAFE_TAG}" >> "$GITHUB_OUTPUT"
@@ -98,6 +96,8 @@ jobs:
     name: container_scanning
     needs: [setup, build, sonarqube]
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
     steps:
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
