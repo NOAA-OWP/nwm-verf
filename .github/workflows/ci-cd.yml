@@ -79,7 +79,7 @@ jobs:
   sonarqube:
     if: github.repository_owner == 'NGWPC'
     runs-on: self-hosted
-    needs: build
+    needs: [setup, build]
     continue-on-error: true
     container:
       image: sonarsource/sonar-scanner-cli
