@@ -29,7 +29,6 @@ jobs:
         id: vars
         shell: bash
         run: |
-          ...
           SAFE_TAG="$(echo "${RAW_TAG}" \
              | tr '[:upper:]' '[:lower:]' \
              | tr -c '[:alnum:]._-' '-' \
