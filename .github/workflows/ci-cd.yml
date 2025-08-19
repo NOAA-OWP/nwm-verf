@@ -81,7 +81,6 @@ jobs:
     name: container_scanning
     needs: [setup, build]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
 
     steps:
       - name: Login to GitHub Container Registry
