@@ -23,6 +23,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Compute safe tag (no slashes; docker-tag friendly)
+        id: tag
+        shell: bash
+        run: |
+          RAW="${GITHUB_REF_NAME}"
+          SAFE="$(echo "${RAW}" \
+            | tr '[:upper:]' '[:lower:]' \
+            | tr -c '[:alnum:]._-' '-' \
+            | cut -c1-128)"
+          echo "DOCKER_IMAGE_TAG_SAFE=${SAFE}" >> "$GITHUB_ENV"
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -33,21 +44,20 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image with DOCKER_IMAGE_TAG-test tag
+      - name: Build Docker image with DOCKER_IMAGE_TAG_SAFE-test tag (tag push)
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         uses: docker/build-push-action@v6
         with:
           context: .
           push: ${{ github.event_name == 'push' }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}-test
-
+            ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG_SAFE }}-test
           # We are simply using the nwm-verf tag for NWM_EVAL_MGR_TAG (this is how it was done on GitLab)
           # We might need to pass in NWM_EVAL_MGR_TAG dynamically in the future if the release tags do not match
           build-args: |
-            NWM_EVAL_MGR_TAG=${{ env.DOCKER_IMAGE_TAG }}
+            NWM_EVAL_MGR_TAG=${{ env.DOCKER_IMAGE_TAG_SAFE }}
 
-      - name: Build Docker image with branch name
+      - name: Build Docker image with DOCKER_IMAGE_TAG_SAFE-test tag (branch push/PR)
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: docker/build-push-action@v6
         with:
@@ -55,8 +65,7 @@ jobs:
           push: ${{ github.event_name == 'push' }}
           # If no NWM_EVAL_MGR_TAG is provided, nwm-verf's Dockerfile uses nwm-eval-mgr's Development branch
           tags: |
-            ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}-test
-
+            ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG_SAFE }}-test
 
   container_scanning:
     name: container_scanning
@@ -71,12 +80,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull image to scan
-        run: docker pull ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}-test
+        run: docker pull ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG_SAFE }}-test
 
       - name: Container Scanning
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: '${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}-test'
+          image-ref: '${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG_SAFE }}-test'
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'
@@ -105,8 +114,8 @@ jobs:
 
       - name: Tag and push :latest
         run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}-test
-          docker tag  ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}-test ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+          docker pull ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG_SAFE }}-test
+          docker tag  ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG_SAFE }}-test ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest
           docker push ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest
 
   release:
@@ -122,9 +131,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Ensure image is tagged with ref_name
+      - name: Ensure image is tagged with ref_name (sanitized)
         run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}-test
-          docker tag  ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}-test ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}
-          docker push ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG }}
-
+          docker pull ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG_SAFE }}-test
+          docker tag  ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG_SAFE }}-test ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG_SAFE }}
+          docker push ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ env.DOCKER_IMAGE_TAG_SAFE }}
