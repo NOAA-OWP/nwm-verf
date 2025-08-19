@@ -93,7 +93,11 @@ jobs:
         env:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: sonar-scanner -X -Dsonar.verbose=true
+        run: >
+          sonar-scanner -X -Dsonar.verbose=true
+          -Dproject.settings=sonar-project.properties
+          -Dsonar.host.url="$SONAR_HOST_URL"
+          -Dsonar.login="$SONAR_TOKEN"
 
   container_scanning:
     name: container_scanning
