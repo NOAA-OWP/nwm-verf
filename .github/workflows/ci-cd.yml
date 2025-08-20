@@ -67,11 +67,11 @@ jobs:
 
       - name: Build Docker image with tag (release)
         if: github.event_name == 'release' && github.event.action == 'published'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v6+
         with:
           context: .
           push: true
-          tags: ${{ needs.setup.outputs.image_base }}:${{ github.event.release.tag_name }}-test
+          tags: ${{ needs.setup.outputs.image_base }}:${{ github.event.release.tag_name }}-build
           build-args: |
             NWM_EVAL_MGR_TAG=${{ github.event.release.tag_name }}
 
