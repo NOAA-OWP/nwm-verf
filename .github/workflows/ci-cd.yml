@@ -25,22 +25,28 @@ jobs:
       image_base: ${{ steps.vars.outputs.image_base }}
       tag:        ${{ steps.vars.outputs.tag }}
     steps:
-      - name: Compute image base and safe tag
-        id: vars
-        shell: bash
-        run: |
-          ORG="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
-          REPO="$(basename "${GITHUB_REPOSITORY}")"
-          IMAGE_BASE="ghcr.io/${ORG}/${REPO}"
-          RAW_TAG="${GITHUB_REF_NAME}"
-          SAFE_TAG="$(echo "${RAW_TAG}" \
-             | tr '[:upper:]' '[:lower:]' \
-             | tr -c '[:alnum:]._-' '-' \
-             | cut -c1-128)"
-          SAFE_TAG="${SAFE_TAG%-}"   # trim trailing '-'
-          [ -n "$SAFE_TAG" ] || SAFE_TAG="build"
-          echo "image_base=${IMAGE_BASE}" >> "$GITHUB_OUTPUT"
-          echo "tag=${SAFE_TAG}" >> "$GITHUB_OUTPUT"
+    - name: Compute image base and safe tag
+      id: vars
+      shell: bash
+      env:
+        RAW_TAG_INPUT: ${{ github.event_name == 'release'
+          && github.event.release.tag_name
+          || (github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number))
+          || github.ref_name }}
+      run: |
+        ORG="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+        REPO="$(basename "${GITHUB_REPOSITORY}")"
+        IMAGE_BASE="ghcr.io/${ORG}/${REPO}"
+        RAW_TAG="${RAW_TAG_INPUT}"
+        SAFE_TAG="$(echo "${RAW_TAG}" \
+          | tr '[:upper:]' '[:lower:]' \
+          | tr -c '[:alnum:]._-' '-' \
+          | cut -c1-128)"
+        SAFE_TAG="${SAFE_TAG%-}"   # trim trailing '-'
+        [ -n "$SAFE_TAG" ] || SAFE_TAG="build"
+        echo "image_base=${IMAGE_BASE}" >> "$GITHUB_OUTPUT"
+        echo "tag=${SAFE_TAG}" >> "$GITHUB_OUTPUT"
+
 
   build:
     name: build
@@ -64,15 +70,18 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          tags: ${{ needs.setup.outputs.image_base }}:${{ needs.setup.outputs.tag }}-test
+          push: true
+          tags: ${{ needs.setup.outputs.image_base }}:${{ github.event.release.tag_name }}-test
           build-args: |
-            NWM_EVAL_MGR_TAG=${{ needs.setup.outputs.tag }}
+            NWM_EVAL_MGR_TAG=${{ github.event.release.tag_name }}
+
 
       - name: Build Docker image with tag (branch push/PR)
         if: github.event_name == 'push' || github.event_name == 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
+          push: true
           tags: ${{ needs.setup.outputs.image_base }}:${{ needs.setup.outputs.tag }}-test
 
   container_scanning:
@@ -140,8 +149,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Ensure image is tagged with ref_name (sanitized)
+      - name: Ensure image is tagged with release tag
         run: |
-          docker pull ${{ needs.setup.outputs.image_base }}:${{ needs.setup.outputs.tag }}-test
-          docker tag  ${{ needs.setup.outputs.image_base }}:${{ needs.setup.outputs.tag }}-test ${{ needs.setup.outputs.image_base }}:${{ needs.setup.outputs.tag }}
-          docker push ${{ needs.setup.outputs.image_base }}:${{ needs.setup.outputs.tag }}
+          docker pull ${{ needs.setup.outputs.image_base }}:${{ github.event.release.tag_name }}-test
+          docker tag  ${{ needs.setup.outputs.image_base }}:${{ github.event.release.tag_name }}-test ${{ needs.setup.outputs.image_base }}:${{ github.event.release.tag_name }}
+          docker push ${{ needs.setup.outputs.image_base }}:${{ github.event.release.tag_name }}
+
