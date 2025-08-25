@@ -74,7 +74,7 @@ jobs:
           push: true
           tags: ${{ needs.setup.outputs.image_base }}:${{ needs.setup.outputs.test_image_tag }}
           build-args: |
-            NWM_EVAL_MGR_TAG=${{ env.NWM_EVAL_MGR_TAG || 'latest' }}
+            NWM_EVAL_MGR_TAG=${{ env.NWM_EVAL_MGR_TAG || 'development' }}
 
   unit-test:
     name: unit-test
