@@ -2,12 +2,12 @@
 # Define valid commands
 VALID_COMMANDS=("verification")
 
-# This shell script lives in the ngen-verf repo.  It is used by CerfServer when calling ngen-verf
+# This shell script lives in the nwm-verf repo.  It is used by CerfServer when calling nwm-verf
 #
 # It is used by CerfServer directly when running in LOCAL mode.
-# It is used by the ngen-verf docker container when the server is running in DOCKER or PARALLEL_WORKS mode
+# It is used by the nwm-verf docker container when the server is running in DOCKER or PARALLEL_WORKS mode
 
-SCRIPT_TO_RUN=/ngen-app/ngen-verf/verification.py
+SCRIPT_TO_RUN=/ngen-app/nwm-verf/verification.py
 
 # Set the umask so files and directories are created with 777 permissions
 umask 000
@@ -25,7 +25,7 @@ show_help() {
   echo ""
   echo "Examples:"
   echo "  $(basename "$0") verification test_data/verf_config.yaml"
-  echo "  $(basename "$0") verification test_data/verf_config.yaml /path/to/output/ngen-verf.log"
+  echo "  $(basename "$0") verification test_data/verf_config.yaml /path/to/output/nwm-verf.log"
   echo ""
   exit 1
 }

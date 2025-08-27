@@ -1,9 +1,9 @@
 import argparse
 import logging
 
-from ngen.verf import calc_metrics, create_plots, fetch_data, pair_data, settings
-from ngen.verf.configuration import load_and_validate_yaml
-from ngen.verf.identify_location_ids import identify_locations
+from nwm.verf import calc_metrics, create_plots, fetch_data, pair_data, settings
+from nwm.verf.configuration import load_and_validate_yaml
+from nwm.verf.identify_location_ids import identify_locations
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
