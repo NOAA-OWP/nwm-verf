@@ -23,7 +23,9 @@ __all__ = [
 # function to remove rows with NaN and infinite values for a given column from a pandas dataframe or geo-dataframe
 # this is useful for cleaning the data before plotting
 # or performing calculations to avoid errors due to NaN or infinite values
-def clean_data(df: pd.DataFrame | gpd.GeoDataFrame, column: str) -> pd.DataFrame | gpd.GeoDataFrame:
+def clean_data(
+    df: pd.DataFrame | gpd.GeoDataFrame, column: str
+) -> pd.DataFrame | gpd.GeoDataFrame:
     df[column] = df[column].replace([np.inf, -np.inf], np.nan)
     df = df.dropna(subset=[column])
     return df
@@ -66,6 +68,8 @@ def get_n_workers(memory_per_worker_gb: int) -> int:
     # Safety check
     n_workers = max(n_workers, 1)
 
-    logger.info(f"  Using {n_workers} workers, with ~{memory_per_worker_gb} GB per worker.")
+    logger.info(
+        f"  Using {n_workers} workers, with ~{memory_per_worker_gb} GB per worker."
+    )
 
     return n_workers

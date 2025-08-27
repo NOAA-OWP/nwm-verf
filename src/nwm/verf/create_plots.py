@@ -10,7 +10,12 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from .settings import dict_ngen_eval_metrics, dict_teehr_metrics, get_metric_bins, get_metric_colormap
+from .settings import (
+    dict_ngen_eval_metrics,
+    dict_teehr_metrics,
+    get_metric_bins,
+    get_metric_colormap,
+)
 from .utils import clean_data
 
 logger = logging.getLogger(__name__)
@@ -56,7 +61,9 @@ def filter_by_lead_metric(df_metrics: pd.DataFrame, conf: dict):
     df_metrics1 = df_metrics1[df_metrics1["metric"].isin(mts0)]
 
     # sort the data by lead times as shown in the configuratio
-    df_metrics1["lead_group"] = pd.Categorical(df_metrics1["lead_group"].astype(str), categories=leads0, ordered=True)
+    df_metrics1["lead_group"] = pd.Categorical(
+        df_metrics1["lead_group"].astype(str), categories=leads0, ordered=True
+    )
     df_metrics1 = df_metrics1.sort_values("lead_group")
 
     return df_metrics1
@@ -68,14 +75,23 @@ def gather_all_metrics(datasets: list, data_paths: dict):
     dfs = []
     for dataset in datasets:
         df = pd.read_parquet(data_paths[dataset])
-        df = df.melt(id_vars=["lead_group", "primary_location_id"], var_name="metric", value_name=dataset)
+        df = df.melt(
+            id_vars=["lead_group", "primary_location_id"],
+            var_name="metric",
+            value_name=dataset,
+        )
         dfs = dfs + [df]
 
     df_metrics = reduce(
-        lambda left, right: pd.merge(left, right, on=["primary_location_id", "lead_group", "metric"], how="inner"), dfs
+        lambda left, right: pd.merge(
+            left, right, on=["primary_location_id", "lead_group", "metric"], how="inner"
+        ),
+        dfs,
     )
     df_metrics = df_metrics.melt(
-        id_vars=["lead_group", "primary_location_id", "metric"], value_vars=datasets, var_name="dataset"
+        id_vars=["lead_group", "primary_location_id", "metric"],
+        value_vars=datasets,
+        var_name="dataset",
     )
 
     return df_metrics
@@ -125,14 +141,22 @@ def create_spatial_maps(conf: dict, data_paths: dict):
                     continue
 
                 # clip the data
-                if not np.isnan(cmap1[metric1]["clim"][0]) and not np.isnan(cmap1[metric1]["clim"][1]):
+                if not np.isnan(cmap1[metric1]["clim"][0]) and not np.isnan(
+                    cmap1[metric1]["clim"][1]
+                ):
                     filtered_gdf["value"] = np.clip(
-                        filtered_gdf["value"], cmap1[metric1]["clim"][0], cmap1[metric1]["clim"][1]
+                        filtered_gdf["value"],
+                        cmap1[metric1]["clim"][0],
+                        cmap1[metric1]["clim"][1],
                     )
 
                 # draw points color coded with the metric value
-                fig, ax = plt.subplots(figsize=(8.5, 6), subplot_kw={"projection": ccrs.PlateCarree()})
-                ax.set_title(f"{metric1} ({metric_long}), lead_time={lead1}h, dataset={case1}")
+                fig, ax = plt.subplots(
+                    figsize=(8.5, 6), subplot_kw={"projection": ccrs.PlateCarree()}
+                )
+                ax.set_title(
+                    f"{metric1} ({metric_long}), lead_time={lead1}h, dataset={case1}"
+                )
 
                 # Add map features
                 ax.add_feature(cfeature.COASTLINE)
@@ -143,7 +167,9 @@ def create_spatial_maps(conf: dict, data_paths: dict):
                 # Dynamically compute point size
                 n_points = len(filtered_gdf)
                 base_size = 10000  # adjust this constant to control density sensitivity
-                point_size = max(10, base_size / n_points)  # minimum size to keep the points visible
+                point_size = max(
+                    10, base_size / n_points
+                )  # minimum size to keep the points visible
                 point_size = min(100, point_size)  # don't want them too big either
 
                 # Plot points
@@ -163,7 +189,17 @@ def create_spatial_maps(conf: dict, data_paths: dict):
                 # export static plot to png
                 file1 = "map_" + metric1 + "_h" + str(lead1) + "_" + case1 + ".png"
                 if "tag" in conf1.keys() and conf1["tag"] is not None:
-                    file1 = "map_" + metric1 + "_h" + str(lead1) + "_" + case1 + "_" + conf1["tag"] + ".png"
+                    file1 = (
+                        "map_"
+                        + metric1
+                        + "_h"
+                        + str(lead1)
+                        + "_"
+                        + case1
+                        + "_"
+                        + conf1["tag"]
+                        + ".png"
+                    )
                 fig_file = Path(fig_dir, file1)
                 plt.savefig(fig_file, dpi=300, bbox_inches="tight")
                 plt.close(fig)
@@ -201,12 +237,18 @@ def create_boxplots(conf: dict, data_paths: dict):
         # clean the data by removing NaN and infinite values
         df1 = clean_data(df1, "value")
         if df1.empty:
-            logger.warning(f"No data available for metric {metric1}. Skipping boxplot creation.")
+            logger.warning(
+                f"No data available for metric {metric1}. Skipping boxplot creation."
+            )
             continue
 
         # clip the data
-        if not np.isnan(cmap1[metric1]["clim"][0]) and not np.isnan(cmap1[metric1]["clim"][1]):
-            df1["value"] = np.clip(df1["value"], cmap1[metric1]["clim"][0], cmap1[metric1]["clim"][1])
+        if not np.isnan(cmap1[metric1]["clim"][0]) and not np.isnan(
+            cmap1[metric1]["clim"][1]
+        ):
+            df1["value"] = np.clip(
+                df1["value"], cmap1[metric1]["clim"][0], cmap1[metric1]["clim"][1]
+            )
 
         # start a new plot
         plt.figure()
@@ -278,7 +320,9 @@ def create_histograms(conf: dict, data_paths: dict):
 
         for lead1 in leads:
             # filter data by metric and lead time
-            df = df_metrics[(df_metrics["metric"] == metric1) & (df_metrics["lead_group"] == lead1)]
+            df = df_metrics[
+                (df_metrics["metric"] == metric1) & (df_metrics["lead_group"] == lead1)
+            ]
 
             # clean the data by removing NaN and infinite values
             df = clean_data(df, "value")
@@ -318,7 +362,9 @@ def create_histograms(conf: dict, data_paths: dict):
             fig_dir.mkdir(parents=True, exist_ok=True)
             file1 = "hist_" + metric1 + "_h" + str(lead1) + ".png"
             if "tag" in conf1.keys() and conf1["tag"] is not None:
-                file1 = "hist_" + metric1 + "_h" + str(lead1) + "_" + conf1["tag"] + ".png"
+                file1 = (
+                    "hist_" + metric1 + "_h" + str(lead1) + "_" + conf1["tag"] + ".png"
+                )
             fig_file = Path(fig_dir, file1)
             plt.savefig(fig_file)
 

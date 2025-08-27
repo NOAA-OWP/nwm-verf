@@ -28,7 +28,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # Add arguments
-    parser.add_argument("config_file", type=str, help="Path to the config yaml file for verification")
+    parser.add_argument(
+        "config_file", type=str, help="Path to the config yaml file for verification"
+    )
 
     # Parse the arguments
     args = parser.parse_args()
@@ -69,7 +71,11 @@ if __name__ == "__main__":
             for dataset_idx, dataset in enumerate(conf["general"]["dataset_name"]):
                 nwm_version = conf["general"]["nwm_version"][dataset_idx]
                 pairs = pair_data.create_pairs(
-                    data_paths, dataset, nwm_version, conf["pair_data"]["group_size"], conf["pair_data"]["overwrite"]
+                    data_paths,
+                    dataset,
+                    nwm_version,
+                    conf["pair_data"]["group_size"],
+                    conf["pair_data"]["overwrite"],
                 )
 
     # compute metrics for each dataset

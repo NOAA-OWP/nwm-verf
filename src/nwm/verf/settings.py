@@ -84,12 +84,18 @@ def get_metric_colormap(conf: dict, plot_type: str) -> dict:
         metric_cmaps[m1] = dict()
 
         # define scale
-        if "scaling" in conf.keys() and m1 in conf["scaling"] and conf["scaling"][m1] is not None:
+        if (
+            "scaling" in conf.keys()
+            and m1 in conf["scaling"]
+            and conf["scaling"][m1] is not None
+        ):
             metric_cmaps[m1]["clim"] = tuple(conf["scaling"][m1])
         elif m1 in metric_color_scale_default.keys():
             metric_cmaps[m1]["clim"] = metric_color_scale_default[m1]
         else:
-            logger.info(f"scaling not defined for {m1}; metric data will not be scaled when creating {plot_type}")
+            logger.info(
+                f"scaling not defined for {m1}; metric data will not be scaled when creating {plot_type}"
+            )
             metric_cmaps[m1]["clim"] = (float("nan"), float("nan"))
 
         # define color maps
@@ -99,7 +105,9 @@ def get_metric_colormap(conf: dict, plot_type: str) -> dict:
             elif m1 in metric_groups["lower_is_better"]:
                 metric_cmaps[m1]["cmap"] = "rainbow"  # cc.rainbow
             else:
-                logger.info(f"metric orientation not defined for {m1}; set to default (rainbow_r)")
+                logger.info(
+                    f"metric orientation not defined for {m1}; set to default (rainbow_r)"
+                )
 
     return metric_cmaps
 
@@ -108,7 +116,11 @@ def get_metric_colormap(conf: dict, plot_type: str) -> dict:
 def get_metric_bins(conf: dict) -> dict:
     metric_bins = dict()
     for m1 in conf["metric_subset"]:
-        if "binning" in conf.keys() and m1 in conf["binning"] and conf["binning"][m1] is not None:
+        if (
+            "binning" in conf.keys()
+            and m1 in conf["binning"]
+            and conf["binning"][m1] is not None
+        ):
             bins = conf["binning"][m1]
             bins = [float(x.lower()) if type(x) is str else x for x in bins]
             metric_bins[m1] = bins
@@ -199,17 +211,27 @@ def data_paths(conf: dict) -> dict:
     metric_file = dict()
     for idx, dataset in enumerate(conf1["dataset_name"]):
         # create output directories based on NWM version
-        fcst_json_dir[dataset] = Path(root_dir, sub_dir, conf1["nwm_version"][idx], "zarr", config)
-        fcst_data_dir[dataset] = Path(root_dir, sub_dir, conf1["nwm_version"][idx], "timeseries", config)
+        fcst_json_dir[dataset] = Path(
+            root_dir, sub_dir, conf1["nwm_version"][idx], "zarr", config
+        )
+        fcst_data_dir[dataset] = Path(
+            root_dir, sub_dir, conf1["nwm_version"][idx], "timeseries", config
+        )
 
         # create additional directory for storing symbolic links to parquet files required for each dataset
-        fcst_data_link_dir[dataset] = Path(root_dir, sub_dir, conf1["dataset_name"][idx], "fcst")
+        fcst_data_link_dir[dataset] = Path(
+            root_dir, sub_dir, conf1["dataset_name"][idx], "fcst"
+        )
 
         # path for joined parquet files (note in pair_data.py, 'group*' will be added to the file name for individual location groups)
-        paired_data_file[dataset] = Path(root_dir, sub_dir, "joined", dataset + ".joined.parquet")
+        paired_data_file[dataset] = Path(
+            root_dir, sub_dir, "joined", dataset + ".joined.parquet"
+        )
 
         # path for metric output files
-        metric_file[dataset] = Path(root_dir, sub_dir, "metrics", dataset + ".metrics.parquet")
+        metric_file[dataset] = Path(
+            root_dir, sub_dir, "metrics", dataset + ".metrics.parquet"
+        )
 
     # paths for plots
     plot_dir = Path(root_dir, sub_dir, "plots")

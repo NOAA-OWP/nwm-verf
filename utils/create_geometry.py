@@ -29,7 +29,9 @@ for d1 in domains:
     df = pd.merge(df, cwt, on="gage", how="inner")
 
     # create geopandas dataframe with lat/lon coordinates
-    gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.lon, df.lat), crs="EPSG:4326")
+    gdf = gpd.GeoDataFrame(
+        df, geometry=gpd.points_from_xy(df.lon, df.lat), crs="EPSG:4326"
+    )
     gdf.drop(["lat", "lon"], axis=1, inplace=True)
 
     # rename column

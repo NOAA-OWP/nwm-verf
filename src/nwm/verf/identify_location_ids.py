@@ -28,7 +28,9 @@ def get_link_by_gage(gages: List[str], crosswalk_file: str):
     miss_ids = []
     if len(df1) < len(df):
         miss_ids = [x for x in df["gage"].tolist() if x not in df1["gage"].tolist()]
-        logger.info(f"  Link ID for gages {miss_ids} are not found in crosswalk file {crosswalk_file}")
+        logger.info(
+            f"  Link ID for gages {miss_ids} are not found in crosswalk file {crosswalk_file}"
+        )
 
     gages1 = [x[1] for x in df1["gage"].str.split("-")]
     links1 = [int(x[1]) for x in df1["secondary_location_id"].str.split("-")]
@@ -46,7 +48,9 @@ def get_gage_by_link(links: int, crosswalk_file: str):
     df1 = df.merge(cwt, on="link", how="inner")
     if len(df1) < len(df):
         miss_ids = [x for x in df["link"].tolist() if x not in df1["link"].tolist()]
-        logger.info(f"  Gage ID for links {miss_ids} are not found in crosswalk file {crosswalk_file}")
+        logger.info(
+            f"  Gage ID for links {miss_ids} are not found in crosswalk file {crosswalk_file}"
+        )
     locations = [str(x[1]) for x in df1["gage"].str.split("-")]
 
     return locations
@@ -80,13 +84,17 @@ def get_link_id_from_file(
 
 # get list of locations as either "gage" or "link" based on location_list provided in config file,
 # i.e., not via a location_list_file
-def get_locations_from_config_list(conf: dict, id_type: str, nwm_ver: Optional[str] = None) -> list:
+def get_locations_from_config_list(
+    conf: dict, id_type: str, nwm_ver: Optional[str] = None
+) -> list:
     locations = []
     loc_list = conf["general"]["location_list"]
     loc_type = conf["general"]["location_type"]
     crosswalk_file = conf["file_paths"]["crosswalk_file"]
     if loc_list is not None and loc_type is None:
-        raise ValueError("config general section: location_type must be provided when location_list is not empty")
+        raise ValueError(
+            "config general section: location_type must be provided when location_list is not empty"
+        )
     else:
         if loc_type in [x + "_link" for x in list(set(conf["general"]["nwm_version"]))]:
             ver1 = loc_type.split("_")[0]
@@ -107,7 +115,9 @@ def get_locations_from_config_list(conf: dict, id_type: str, nwm_ver: Optional[s
             else:
                 raise ValueError(f"location type {id_type} not supported")
         else:
-            raise ValueError(f'location_type must be either "usgs_gage" or "nwm30_link" or "nwm22_link')
+            raise ValueError(
+                f'location_type must be either "usgs_gage" or "nwm30_link" or "nwm22_link'
+            )
 
     return locations
 
@@ -135,7 +145,9 @@ def get_nwm_link_ids(conf: dict, nwm_ver: str) -> list:
         else:
             raise ValueError(f"Crosswalk file for {nwm_ver} is not provided")
     else:
-        raise ValueError(f"Either location_list or location_list_file must be provided in configuration yaml file")
+        raise ValueError(
+            f"Either location_list or location_list_file must be provided in configuration yaml file"
+        )
 
     logger.info(f"  Total number of nwm locations: {len(locations)}")
 
@@ -169,7 +181,9 @@ def get_gage_id_from_file(
                     else:
                         logger.info(f"crosswalk file not found: {cwf}")
         else:
-            raise ValueError("No gage or NWM link column (e.g., nwmv30_link) is not found in location file")
+            raise ValueError(
+                "No gage or NWM link column (e.g., nwmv30_link) is not found in location file"
+            )
 
     return locations
 
@@ -188,7 +202,9 @@ def get_usgs_gage_ids(conf: dict) -> list:
         location_list_file = Path(location_list_file).absolute()
         locations = get_gage_id_from_file(location_list_file, crosswalk_file)
     else:
-        raise ValueError("Either location_list or location_list_file must be provided in configuration yaml file")
+        raise ValueError(
+            "Either location_list or location_list_file must be provided in configuration yaml file"
+        )
 
     # only accept usgs locations for now
     gage_meta_file = Path(gage_meta_file).absolute()
@@ -196,7 +212,12 @@ def get_usgs_gage_ids(conf: dict) -> list:
         raise FileNotFoundError(gage_meta_file)
     df = pd.read_csv(gage_meta_file, sep=None, comment="#", engine="python")
     # gages = [x for x in locations if df[df['gage']==x]['agency'].iloc[0] == 'USGS']
-    gages = [x for x in locations if not df[df["gage"] == x].empty and df[df["gage"] == x]["agency"].iloc[0] == "USGS"]
+    gages = [
+        x
+        for x in locations
+        if not df[df["gage"] == x].empty
+        and df[df["gage"] == x]["agency"].iloc[0] == "USGS"
+    ]
 
     missed = [x for x in locations if x not in gages]
     if len(missed) > 0:
@@ -216,7 +237,9 @@ def identify_locations(conf: dict) -> dict:
         locations_usgs1, locations_nwm1 = get_link_by_gage(
             locations_usgs, conf["file_paths"]["crosswalk_file"][nwm_version]
         )
-        logger.info(f"  Total number of locations for dataset {dataset}: {len(locations_nwm1)}")
+        logger.info(
+            f"  Total number of locations for dataset {dataset}: {len(locations_nwm1)}"
+        )
         locations[dataset] = {"primary": locations_usgs1, "secondary": locations_nwm1}
 
     return locations

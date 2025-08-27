@@ -4,3 +4,11 @@ requires = [
   "setuptools>=42",
   "wheel",
 ]
+
+[tool.ruff]
+line-length = 88  
+
+[tool.ruff.format]
+quote-style = "double"   # optional: "single" or "double"
+indent-style = "space"   # or "tab"
+line-ending = "auto"     # or "lf"/"crlf"

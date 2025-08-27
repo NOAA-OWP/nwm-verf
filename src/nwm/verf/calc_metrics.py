@@ -4,11 +4,10 @@ from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from typing import Optional, Union
 
+import ngen.eval.metric_functions as mf
 import numpy as np
 import pandas as pd
 from teehr.classes.duckdb_joined_parquet import DuckDBJoinedParquet
-
-import ngen.eval.metric_functions as mf
 
 from .settings import dict_ngen_eval_metrics, dict_teehr_metrics
 
@@ -39,7 +38,9 @@ def check_metrics(metrics: list, mapping: dict, mode: str = "ngen.eval"):
     """
     mode = mode.lower()  # Make mode case-insensitive
     if mode not in ["teehr", "ngen.eval"]:
-        raise ValueError(f"Unsupported mode: {mode}. Supported modes are 'ngen.eval' and 'teehr'.")
+        raise ValueError(
+            f"Unsupported mode: {mode}. Supported modes are 'ngen.eval' and 'teehr'."
+        )
 
     mapped_metrics = []
     unsupported_metrics = []
@@ -59,7 +60,9 @@ def check_metrics(metrics: list, mapping: dict, mode: str = "ngen.eval"):
             unsupported_metrics.append(m)
 
     if unsupported_metrics:
-        logger.warning(f"The following metrics are not supported by {mode}: {unsupported_metrics}. Skipping them.")
+        logger.warning(
+            f"The following metrics are not supported by {mode}: {unsupported_metrics}. Skipping them."
+        )
 
     return mapped_metrics
 
@@ -71,7 +74,9 @@ def calc_teehr_metrics(
     metrics: list[str],
 ) -> pd.DataFrame:
     # paired data parquet
-    joined_data = DuckDBJoinedParquet(joined_parquet_filepath=pairs, geometry_filepath=geometry)
+    joined_data = DuckDBJoinedParquet(
+        joined_parquet_filepath=pairs, geometry_filepath=geometry
+    )
 
     # compute metrics
     gdf_all = joined_data.get_metrics(
@@ -85,14 +90,20 @@ def calc_teehr_metrics(
 
 
 # function to calculate ngen.eval metrics (i.e, metrics used by ngen-cal)
-def func_calc_metrics(df: pd.DataFrame, metrics: list[str], thresholds: list = [0.9, 0.9]) -> pd.DataFrame:
+def func_calc_metrics(
+    df: pd.DataFrame, metrics: list[str], thresholds: list = [0.9, 0.9]
+) -> pd.DataFrame:
     if len(df) < 2:  # personr calculation requires data length of at least 2
         return pd.DataFrame()
     else:
         df1 = df.copy(deep=True)
         df1 = df1.set_index("value_time", inplace=False)
         values = mf.calculate_metrics(
-            pd.Series(df1["primary_value"]), pd.Series(df1["secondary_value"]), metrics, thresholds[0], thresholds[1]
+            pd.Series(df1["primary_value"]),
+            pd.Series(df1["secondary_value"]),
+            metrics,
+            thresholds[0],
+            thresholds[1],
         )
         values["lead_group"] = df1["lead_group"].unique()[0]
         values["primary_location_id"] = df1["primary_location_id"].unique()[0]
@@ -116,7 +127,15 @@ def calc_ngen_eval_metrics(
     locations = df_pairs["primary_location_id"].unique()
 
     # drop unneeded columns
-    df_pairs = df_pairs[["primary_location_id", "lead_group", "value_time", "primary_value", "secondary_value"]]
+    df_pairs = df_pairs[
+        [
+            "primary_location_id",
+            "lead_group",
+            "value_time",
+            "primary_value",
+            "secondary_value",
+        ]
+    ]
 
     # sort by location then lead time
     df_pairs = df_pairs.sort_values(["primary_location_id", "lead_group"])
@@ -128,7 +147,9 @@ def calc_ngen_eval_metrics(
             df1 = df_pairs[df_pairs["primary_location_id"] == l1]
             for l2 in lead_times:
                 df2 = df1[df1["lead_group"] == l2]
-                results.append(pool.apply_async(func_calc_metrics, args=(df2, metrics, thresholds)))
+                results.append(
+                    pool.apply_async(func_calc_metrics, args=(df2, metrics, thresholds))
+                )
 
         new_dfs = [result.get() for result in results]
         df_metrics = pd.concat(new_dfs, ignore_index=True)
@@ -140,7 +161,11 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
     # metrics to be calculated
     metrics = conf["metric_subset"]
     if not metrics or metrics == ["all"] or metrics == "all":
-        metrics = list(dict_teehr_metrics.keys()) if conf["library"] == "teehr" else list(dict_ngen_eval_metrics.keys())
+        metrics = (
+            list(dict_teehr_metrics.keys())
+            if conf["library"] == "teehr"
+            else list(dict_ngen_eval_metrics.keys())
+        )
 
     # exclude metrics as requested
     metrics_exclude = conf["metric_exclude"] or []
@@ -148,7 +173,9 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
         metrics = [m1 for m1 in metrics if m1 not in metrics_exclude]
 
     # check if metrics are supported by the library
-    dict_metrics = dict_teehr_metrics if conf["library"] == "teehr" else dict_ngen_eval_metrics
+    dict_metrics = (
+        dict_teehr_metrics if conf["library"] == "teehr" else dict_ngen_eval_metrics
+    )
     metrics = check_metrics(metrics, dict_metrics, mode=conf["library"])
 
     # get all data pairs and raw lead times
@@ -187,12 +214,19 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
         df1.to_parquet(pair_file1)
 
         if conf["library"] == "teehr":
-            df_metrics = pd.concat([df_metrics, calc_teehr_metrics(pair_file1, geofile, metrics)], ignore_index=True)
+            df_metrics = pd.concat(
+                [df_metrics, calc_teehr_metrics(pair_file1, geofile, metrics)],
+                ignore_index=True,
+            )
 
         elif conf["library"] == "ngen.eval":
-            thresholds = [conf["flow_threshold_categorical"], conf["flow_threshold_event"]]
+            thresholds = [
+                conf["flow_threshold_categorical"],
+                conf["flow_threshold_event"],
+            ]
             df_metrics = pd.concat(
-                [df_metrics, calc_ngen_eval_metrics(pair_file1, metrics, thresholds)], ignore_index=True
+                [df_metrics, calc_ngen_eval_metrics(pair_file1, metrics, thresholds)],
+                ignore_index=True,
             )
 
         else:
@@ -205,7 +239,9 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
 
     # If using teehr library, remap long name to short name for metrics
     if conf["library"] == "teehr":
-        df_metrics = df_metrics.rename(columns={v: k for k, v in dict_teehr_metrics.items()})
+        df_metrics = df_metrics.rename(
+            columns={v: k for k, v in dict_teehr_metrics.items()}
+        )
 
     return df_metrics
 
@@ -239,8 +275,14 @@ def calc_metrics(conf: dict, data_paths: dict):
             pair_files = list(pair_path.parent.glob(f"{pair_path.stem}.group*.parquet"))
             for i1, pair_file in enumerate(pair_files):
                 logger.info(f"  Calculating metrics for {dataset} group {i1} ...")
-                df_metrics = calc_metrics_group(conf["metrics"], pair_file, data_paths["geofile"])
+                df_metrics = calc_metrics_group(
+                    conf["metrics"], pair_file, data_paths["geofile"]
+                )
                 if i1 == 0:
-                    df_metrics.to_parquet(metric_file, engine="fastparquet", index=False)
+                    df_metrics.to_parquet(
+                        metric_file, engine="fastparquet", index=False
+                    )
                 else:
-                    df_metrics.to_parquet(metric_file, engine="fastparquet", index=False, append=True)
+                    df_metrics.to_parquet(
+                        metric_file, engine="fastparquet", index=False, append=True
+                    )

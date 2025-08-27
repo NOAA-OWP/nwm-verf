@@ -26,12 +26,19 @@ for d1 in domains:
 
     # gages are two dimentional, first convert each row to list, then convert each value in the row from byte to str,
     # remove whitespace and then combine all items in the row into a gage ID
-    gages = ["".join([s1.decode("utf-8").strip() for s1 in g1]) for g1 in ncvar["gages"][:].tolist()]
+    gages = [
+        "".join([s1.decode("utf-8").strip() for s1 in g1])
+        for g1 in ncvar["gages"][:].tolist()
+    ]
     links = ncvar["link"][:].tolist()
 
     # combine gages and links into a DataFrame, removing gages with blank IDs
     df = pd.DataFrame(
-        [("usgs-" + gage, "nwm30-" + str(link)) for gage, link in zip(gages, links) if gage != ""],
+        [
+            ("usgs-" + gage, "nwm30-" + str(link))
+            for gage, link in zip(gages, links)
+            if gage != ""
+        ],
         columns=["primary_location_id", "secondary_location_id"],
     )
 

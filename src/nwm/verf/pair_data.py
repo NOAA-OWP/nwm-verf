@@ -23,7 +23,9 @@ def join_time_series(data_paths: dict, dataset: str, nwm_version: str) -> Path:
     ddb = DuckDBDatabase(db_filepath)
 
     # Join and insert the timeseries data to the temporary database.
-    logger.info(f"  Joining time series for dataset {dataset} in DuckDBDatabase: {db_filepath}")
+    logger.info(
+        f"  Joining time series for dataset {dataset} in DuckDBDatabase: {db_filepath}"
+    )
     ddb.insert_joined_timeseries(
         primary_filepath=primary_data_files,
         secondary_filepath=secondary_data_files,
@@ -35,7 +37,10 @@ def join_time_series(data_paths: dict, dataset: str, nwm_version: str) -> Path:
 
 
 def export_location_groups_with_lead_time(
-    db_path: Path, output_path: Path, table_name: str = "joined_timeseries", group_size: int = 200
+    db_path: Path,
+    output_path: Path,
+    table_name: str = "joined_timeseries",
+    group_size: int = 200,
 ):
     # Get sorted list of unique primary_location_id values
     con = duckdb.connect(str(db_path))
@@ -46,7 +51,9 @@ def export_location_groups_with_lead_time(
     location_ids = [loc[0] for loc in location_ids]
 
     if len(location_ids) == 0:
-        raise Exception(f"ERROR: no primary_location_id found in the joined_timeseries database")
+        raise Exception(
+            f"ERROR: no primary_location_id found in the joined_timeseries database"
+        )
 
     n_groups = math.ceil(len(location_ids) / group_size)
 
@@ -54,7 +61,9 @@ def export_location_groups_with_lead_time(
     for i in range(n_groups):
         group_ids = location_ids[i * group_size : (i + 1) * group_size]
         group_file = output_path.with_name(output_path.stem + f".group{i}.parquet")
-        logger.info(f"  Exporting paired data for group {i} locations to {group_file} ...")
+        logger.info(
+            f"  Exporting paired data for group {i} locations to {group_file} ..."
+        )
 
         formatted_ids = ", ".join(f"'{loc}'" for loc in group_ids)
 
@@ -81,12 +90,22 @@ def export_location_groups_with_lead_time(
     con.close()
 
 
-def create_pairs(data_paths: dict, dataset: str, nwm_version: str, group_size=200, overwrite: bool = False) -> Path:
+def create_pairs(
+    data_paths: dict,
+    dataset: str,
+    nwm_version: str,
+    group_size=200,
+    overwrite: bool = False,
+) -> Path:
     # check if paired data already exist; if not, create it
     pair_file = data_paths.get("joined")[dataset]
-    existing_pair_files = list(pair_file.parent.glob(f"{pair_file.stem}.group*.parquet"))
+    existing_pair_files = list(
+        pair_file.parent.glob(f"{pair_file.stem}.group*.parquet")
+    )
     if len(existing_pair_files) > 0 and (not overwrite):
-        logger.info(f"  Paired data for {dataset} already exist at {existing_pair_files}. Skip pairing")
+        logger.info(
+            f"  Paired data for {dataset} already exist at {existing_pair_files}. Skip pairing"
+        )
     else:
         pair_file.parent.mkdir(exist_ok=True, parents=True)
 
@@ -99,7 +118,9 @@ def create_pairs(data_paths: dict, dataset: str, nwm_version: str, group_size=20
         db_path = join_time_series(data_paths, dataset, nwm_version)
 
         # then calculate lead times and export paired data by group (to avoid potential memory issues)
-        export_location_groups_with_lead_time(db_path, pair_file, table_name="joined_timeseries", group_size=group_size)
+        export_location_groups_with_lead_time(
+            db_path, pair_file, table_name="joined_timeseries", group_size=group_size
+        )
 
         # remove the temporay database
         if Path(db_path).exists():
