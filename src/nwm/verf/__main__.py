@@ -1,18 +1,18 @@
 import argparse
 import logging
+
+# logging.basicConfig(level=logging.INFO)
+# logging.getLogger("google.auth.compute_engine._metadata").setLevel(logging.ERROR)
+# logging.getLogger("fsspec.reference").setLevel(logging.WARNING)
+from contextlib import contextmanager
 from pathlib import Path
+from time import time
 
 import nwm.verf.process_config as pc
 from nwm.verf import calc_metrics, create_plots, fetch_data, pair_data, settings
 from nwm.verf.identify_location_ids import identify_locations
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-logging.getLogger("google.auth.compute_engine._metadata").setLevel(logging.ERROR)
-logging.getLogger("fsspec.reference").setLevel(logging.WARNING)
-
-from contextlib import contextmanager
-from time import time
 
 
 # function to timing the execution of various steps
@@ -41,7 +41,7 @@ def main(config_file: str | Path):
         # identify locations to run verification for
         locations = identify_locations(conf)
         with timing_block(step1):
-            fetch_data.retrieve_nwm_fcsts(locations, conf, data_paths)
+            fetch_data.retrieve_fcsts(locations, conf, data_paths)
 
     # fetch flow observation data
     step1 = "fetch_obs_data"

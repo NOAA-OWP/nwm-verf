@@ -61,9 +61,12 @@ def export_location_groups_with_lead_time(
     for i in range(n_groups):
         group_ids = location_ids[i * group_size : (i + 1) * group_size]
         group_file = output_path.with_name(output_path.stem + f".group{i}.parquet")
-        logger.info(
-            f"  Exporting paired data for group {i} locations to {group_file} ..."
-        )
+        if n_groups > 1:
+            logger.info(
+                f"  Exporting paired data for group {i} locations to {group_file} ..."
+            )
+        else:
+            logger.info(f"  Exporting paired data to {group_file} ...")
 
         formatted_ids = ", ".join(f"'{loc}'" for loc in group_ids)
 

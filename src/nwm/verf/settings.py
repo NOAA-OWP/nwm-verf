@@ -224,17 +224,21 @@ def data_paths(conf: dict) -> dict:
         )
 
         # path for joined parquet files (note in pair_data.py, 'group*' will be added to the file name for individual location groups)
-        paired_data_file[dataset] = Path(
-            root_dir, sub_dir, "joined", dataset + ".joined.parquet"
+        filename = (
+            f"{dataset}."
+            f"{conf1['nwm_version'][idx]}."
+            f"{conf1['nwm_configuration']}."
+            "joined.parquet"
         )
+        paired_data_file[dataset] = Path(root_dir, sub_dir, "joined", filename)
 
         # path for metric output files
         metric_file[dataset] = Path(
-            root_dir, sub_dir, "metrics", dataset + ".metrics.parquet"
+            root_dir, sub_dir, "metrics", filename.replace("joined", "metrics")
         )
 
-    # paths for plots
-    plot_dir = Path(root_dir, sub_dir, "plots")
+    # path for plots
+    plot_dir = Path(root_dir, sub_dir, "plots", conf1["nwm_configuration"])
 
     # path for crosswalk file
     cwt_file = dict()

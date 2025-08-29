@@ -358,15 +358,18 @@ def save_data(
         )
 
 
-def read_table(
-    file_path: Path | str, dtype: dict[str, str] | None = None
+def read_data(
+    file_path: Path | str,
+    dtype: dict[str, str] | None = None,
+    parse_dates: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Read table from a csv or parquet file.
+    """Read data from a csv or parquet file.
 
     Args:
         file_path (Path | str): Path to the file to read, with file format determined by the file extension
         (.csv or .parquet).
         dtype (dict[str, str] | None): Optional dictionary specifying the data types for specific columns.
+        parse_dates (list[str] | None): Optional list of columns to parse as dates.
 
     Returns:
         pd.DataFrame: DataFrame containing the data from the file.
@@ -378,7 +381,7 @@ def read_table(
 
     suffix = file_path.suffix.lower()
     if suffix == ".csv":
-        df = pd.read_csv(file_path, dtype=dtype)
+        df = pd.read_csv(file_path, dtype=dtype, parse_dates=parse_dates)
     elif suffix == ".parquet":
         df = pd.read_parquet(file_path)
     else:

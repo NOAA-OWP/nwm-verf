@@ -10,6 +10,7 @@ from teehr.classes.duckdb_joined_parquet import DuckDBJoinedParquet
 
 import nwm.eval.metric_functions as mf
 
+from .nwm_configs import interpret_lead_times
 from .settings import dict_nwm_eval_metrics, dict_teehr_metrics
 
 # from .utils import get_key_from_value
@@ -92,9 +93,12 @@ def calc_teehr_metrics(
 
 # function to calculate nwm.eval metrics (i.e, metrics used by nwm-cal)
 def func_calc_metrics(
-    df: pd.DataFrame, metrics: list[str], thresholds: list = [0.9, 0.9]
+    df: pd.DataFrame, metrics: list[str], lead_time: int, thresholds: list = [0.9, 0.9]
 ) -> pd.DataFrame:
     if len(df) < 2:  # personr calculation requires data length of at least 2
+        logger.warning(
+            f"Insufficient data for metric calculation, lead time: {lead_time}."
+        )
         return pd.DataFrame()
     else:
         df1 = df.copy(deep=True)
@@ -149,7 +153,9 @@ def calc_nwm_eval_metrics(
             for l2 in lead_times:
                 df2 = df1[df1["lead_group"] == l2]
                 results.append(
-                    pool.apply_async(func_calc_metrics, args=(df2, metrics, thresholds))
+                    pool.apply_async(
+                        func_calc_metrics, args=(df2, metrics, l2, thresholds)
+                    )
                 )
 
         new_dfs = [result.get() for result in results]
@@ -160,24 +166,25 @@ def calc_nwm_eval_metrics(
 
 def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFrame:
     # metrics to be calculated
-    metrics = conf["metric_subset"]
+    conf_met = conf["metrics"]
+    metrics = conf_met["metric_subset"]
     if not metrics or metrics == ["all"] or metrics == "all":
         metrics = (
             list(dict_teehr_metrics.keys())
-            if conf["library"] == "teehr"
+            if conf_met["library"] == "teehr"
             else list(dict_nwm_eval_metrics.keys())
         )
 
     # exclude metrics as requested
-    metrics_exclude = conf["metric_exclude"] or []
+    metrics_exclude = conf_met["metric_exclude"] or []
     if metrics_exclude:
         metrics = [m1 for m1 in metrics if m1 not in metrics_exclude]
 
     # check if metrics are supported by the library
     dict_metrics = (
-        dict_teehr_metrics if conf["library"] == "teehr" else dict_nwm_eval_metrics
+        dict_teehr_metrics if conf_met["library"] == "teehr" else dict_nwm_eval_metrics
     )
-    metrics = check_metrics(metrics, dict_metrics, mode=conf["library"])
+    metrics = check_metrics(metrics, dict_metrics, mode=conf_met["library"])
 
     # get all data pairs and raw lead times
     df0 = pd.read_parquet(pair_file)
@@ -185,15 +192,31 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
     leads0.sort()
     lead_step = leads0[0]
 
-    # lead times to calculate metrics for (can be grouped lead times e.g., 1-3 hours)
-    if "lead_times" in conf.keys() and conf["lead_times"] is not None:
-        lead_times = [str(x) for x in conf["lead_times"]]
-    else:
-        lead_times = ["all"]
+    # # lead times to calculate metrics for (can be grouped lead times e.g., 1-3 hours)
+    # if "lead_times" in conf.keys() and conf["lead_times"] is not None:
+    #     lead_times = [str(x) for x in conf["lead_times"]]
+    # else:
+    #     lead_times = ["all"]
 
-    # interpret 'all' as calculating all native lead times (leads0)
-    if "all" in lead_times:
-        lead_times = list(map(str, leads0)) + [x for x in lead_times if x != "all"]
+    # # interpret 'all' as calculating all native lead times (leads0)
+    # nwm_config = conf["general"]["nwm_configuration"]
+    # if "all" in lead_times:
+    #     lead_times = interpret_lead_times("all", nwm_config) + [
+    #         x for x in lead_times if x != "all"
+    #     ]
+
+    # # interpret 'all_aggregated' as calculating a single aggregated lead time over all native lead times
+    # if "all_aggregated" in lead_times:
+    #     lead_times = interpret_lead_times("all_aggregated", nwm_config) + [
+    #         x for x in lead_times if x != "all_aggregated"
+    #     ]
+    nwm_config = conf["general"]["nwm_configuration"]
+    lead_times, missed_leads = interpret_lead_times(
+        conf_met["lead_times"], nwm_config, leads0
+    )
+    if missed_leads:
+        logger.warning(f"Missing lead times: {missed_leads}")
+    logger.info(f"Lead times to calculate metrics for: {lead_times}")
 
     # removed repetitive lead times if any
     lead_times = sorted(list(set(lead_times)))
@@ -214,16 +237,16 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
         pair_file1 = pair_file.with_name(pair_file.stem + ".new.parquet")
         df1.to_parquet(pair_file1)
 
-        if conf["library"] == "teehr":
+        if conf_met["library"] == "teehr":
             df_metrics = pd.concat(
                 [df_metrics, calc_teehr_metrics(pair_file1, geofile, metrics)],
                 ignore_index=True,
             )
 
-        elif conf["library"] == "nwm.eval":
+        elif conf_met["library"] == "nwm.eval":
             thresholds = [
-                conf["flow_threshold_categorical"],
-                conf["flow_threshold_event"],
+                conf_met["flow_threshold_categorical"],
+                conf_met["flow_threshold_event"],
             ]
             df_metrics = pd.concat(
                 [df_metrics, calc_nwm_eval_metrics(pair_file1, metrics, thresholds)],
@@ -231,7 +254,7 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
             )
 
         else:
-            raise Exception(f"Metric library {conf['library']} not supported")
+            raise Exception(f"Metric library {conf_met['library']} not supported")
 
         # remove the temporary new parquet file
         pair_file1.unlink(missing_ok=True)
@@ -239,7 +262,7 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
         gc.collect()
 
     # If using teehr library, remap long name to short name for metrics
-    if conf["library"] == "teehr":
+    if conf_met["library"] == "teehr":
         df_metrics = df_metrics.rename(
             columns={v: k for k, v in dict_teehr_metrics.items()}
         )
@@ -275,10 +298,12 @@ def calc_metrics(conf: dict, data_paths: dict):
             pair_path = data_paths["joined"][dataset]
             pair_files = list(pair_path.parent.glob(f"{pair_path.stem}.group*.parquet"))
             for i1, pair_file in enumerate(pair_files):
-                logger.info(f"  Calculating metrics for {dataset} group {i1} ...")
-                df_metrics = calc_metrics_group(
-                    conf["metrics"], pair_file, data_paths["geofile"]
-                )
+                if len(pair_files) > 1:
+                    logger.info(f"  Calculating metrics for {dataset} group {i1} ...")
+                else:
+                    logger.info(f"  Calculating metrics for {dataset} ...")
+
+                df_metrics = calc_metrics_group(conf, pair_file, data_paths["geofile"])
                 if i1 == 0:
                     df_metrics.to_parquet(
                         metric_file, engine="fastparquet", index=False

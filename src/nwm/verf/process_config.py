@@ -6,6 +6,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from .configuration import Config
+from .logging_utils import setup_logging
 from .utils import (
     check_columns_dataframe,
     flatten_dict,
@@ -14,7 +15,7 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 
 
 class ProcessConfig(BaseModel):
@@ -180,6 +181,20 @@ class ProcessConfig(BaseModel):
             for file in file_path:
                 check_columns_dataframe(file, required_columns)
 
+    def setup_logger(self) -> None:
+        """Set up logging configuration."""
+        log_file = Path(self.config.file_paths.output_dir) / "verification.log"
+        log_level = "INFO"
+        setup_logging(
+            level=log_level,
+            target_packages=("__main__", "nwm.verf"),
+            log_file=log_file,
+            file_level=log_level,
+        )
+        logger.info(f"Config file {self.config_path} loaded successfully.")
+        logger.info(f"Logging initialized with log level: {log_level}.")
+        logger.info(f"Log file: {log_file}")
+
     def load_and_validate_yaml(self):
         """Load a YAML file and validate its structure using Pydantic."""
         try:
@@ -187,27 +202,29 @@ class ProcessConfig(BaseModel):
                 data = yaml.safe_load(file)
                 self.config = Config(**data)
 
-                # Substitute placeholders in the config
-                self.substitute_placeholders()
-
-                # validate file paths
-                paths = self.assemble_file_paths()
-                self.validate_paths(paths)
-
-                # check required columns in files
-                self.check_file_columns(paths)
-
-                # save file config
-                out_file = (
-                    Path(self.config.file_paths.output_dir)
-                    / "nwm_verf_config_expanded.yaml"
-                )
-                save_data(self.config, out_file)
-                logger.info(f"Expanded config saved to {out_file}")
-
-                return self.config.model_dump()
-
         except ValidationError as e:
             raise Exception(f"Validation Error: {e}")
         except Exception as e:
             raise Exception(f"Error loading YAML file: {e}")
+
+        # Substitute placeholders in the config
+        self.substitute_placeholders()
+
+        # validate file paths
+        paths = self.assemble_file_paths()
+        self.validate_paths(paths)
+
+        # setup logger
+        self.setup_logger()
+
+        # check required columns in files
+        self.check_file_columns(paths)
+
+        # save file config
+        out_file = (
+            Path(self.config.file_paths.output_dir) / "nwm_verf_config_expanded.yaml"
+        )
+        save_data(self.config, out_file)
+        logger.info(f"Expanded config saved to {out_file}")
+
+        return self.config.model_dump()

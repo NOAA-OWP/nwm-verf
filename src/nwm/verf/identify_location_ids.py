@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Union
 
 import pandas as pd
 
-from .utils import read_table
+from .utils import read_data
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -22,7 +22,7 @@ __all__ = [
 
 # get location link ID based on gage ID and crosswalk
 def get_link_by_gage(gages: List[str], crosswalk_file: str):
-    cwt = read_table(crosswalk_file)
+    cwt = read_data(crosswalk_file)
     cwt.rename(columns={"primary_location_id": "gage"}, inplace=True)
 
     df = pd.DataFrame(list(map("usgs-".__add__, gages)), columns=["gage"])
@@ -42,7 +42,7 @@ def get_link_by_gage(gages: List[str], crosswalk_file: str):
 
 # get location gage ID based on link ID and crosswalk
 def get_gage_by_link(links: int, crosswalk_file: str):
-    cwt = read_table(crosswalk_file)
+    cwt = read_data(crosswalk_file)
     cwt.rename(columns={"primary_location_id": "gage"}, inplace=True)
     cwt.rename(columns={"secondary_location_id": "link"}, inplace=True)
 
@@ -67,7 +67,7 @@ def get_link_id_from_file(
     f1 = Path(id_file).absolute()
     if not f1.exists():
         raise FileNotFoundError(f1)
-    df = read_table(f1)
+    df = read_data(f1)
     df.columns = [x.lower() for x in df.columns]
     locations = []
     link1 = nwm_ver + "_link"
@@ -163,7 +163,7 @@ def get_gage_id_from_file(
     f1 = Path(id_file).absolute()
     if not f1.exists():
         raise FileNotFoundError(f1)
-    df = read_table(f1)
+    df = read_data(f1)
     df.columns = [x.lower() for x in df.columns]
     locations = []
     if "primary_location_id" in df.columns:
@@ -208,7 +208,7 @@ def get_usgs_gage_ids(conf: dict) -> list:
         )
 
     # only accept usgs locations for now
-    df = read_table(hydro_file)
+    df = read_data(hydro_file)
     # gages = [x for x in locations if df[df['gage']==x]['agency'].iloc[0] == 'USGS']
     locations = ["usgs-" + x for x in locations]
     gages = [
