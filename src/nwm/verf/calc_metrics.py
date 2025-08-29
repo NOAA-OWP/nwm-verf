@@ -4,12 +4,13 @@ from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from typing import Optional, Union
 
-import ngen.eval.metric_functions as mf
 import numpy as np
 import pandas as pd
 from teehr.classes.duckdb_joined_parquet import DuckDBJoinedParquet
 
-from .settings import dict_ngen_eval_metrics, dict_teehr_metrics
+import nwm.eval.metric_functions as mf
+
+from .settings import dict_nwm_eval_metrics, dict_teehr_metrics
 
 # from .utils import get_key_from_value
 
@@ -21,25 +22,25 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 # Suppress specific logging messages from the metric functions library
-logging.getLogger("ngen.eval.metric_functions").setLevel(logging.ERROR)
+logging.getLogger("nwm.eval.metric_functions").setLevel(logging.ERROR)
 
 
-def check_metrics(metrics: list, mapping: dict, mode: str = "ngen.eval"):
+def check_metrics(metrics: list, mapping: dict, mode: str = "nwm.eval"):
     """Validate a list of metric names against a known mapping (here a metrics library).
 
     Args:
         metrics: List of metric names to validate.
         mapping: A dictionary mapping known metric keys to values.
-        mode: Either "teehr" or "ngen.eval", determining how to map supported metrics.
+        mode: Either "teehr" or "nwm.eval", determining how to map supported metrics.
 
     Returns:
         A filtered and mapped list of supported metrics.
 
     """
     mode = mode.lower()  # Make mode case-insensitive
-    if mode not in ["teehr", "ngen.eval"]:
+    if mode not in ["teehr", "nwm.eval"]:
         raise ValueError(
-            f"Unsupported mode: {mode}. Supported modes are 'ngen.eval' and 'teehr'."
+            f"Unsupported mode: {mode}. Supported modes are 'nwm.eval' and 'teehr'."
         )
 
     mapped_metrics = []
@@ -49,7 +50,7 @@ def check_metrics(metrics: list, mapping: dict, mode: str = "ngen.eval"):
         if m in mapping.values():
             if mode == "teehr":
                 mapped_metrics.append(m)
-            elif mode == "ngen.eval":
+            elif mode == "nwm.eval":
                 # Get key from value (reverse lookup)
                 key = next((k for k, v in mapping.items() if v == m), None)
                 if key is not None:
@@ -89,7 +90,7 @@ def calc_teehr_metrics(
     return gdf_all
 
 
-# function to calculate ngen.eval metrics (i.e, metrics used by ngen-cal)
+# function to calculate nwm.eval metrics (i.e, metrics used by nwm-cal)
 def func_calc_metrics(
     df: pd.DataFrame, metrics: list[str], thresholds: list = [0.9, 0.9]
 ) -> pd.DataFrame:
@@ -111,7 +112,7 @@ def func_calc_metrics(
         return pd.DataFrame([values])
 
 
-def calc_ngen_eval_metrics(
+def calc_nwm_eval_metrics(
     pairs: Path,
     metrics: list[str],
     # metrics: Optional[Union[str,list]]="all",
@@ -164,7 +165,7 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
         metrics = (
             list(dict_teehr_metrics.keys())
             if conf["library"] == "teehr"
-            else list(dict_ngen_eval_metrics.keys())
+            else list(dict_nwm_eval_metrics.keys())
         )
 
     # exclude metrics as requested
@@ -174,7 +175,7 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
 
     # check if metrics are supported by the library
     dict_metrics = (
-        dict_teehr_metrics if conf["library"] == "teehr" else dict_ngen_eval_metrics
+        dict_teehr_metrics if conf["library"] == "teehr" else dict_nwm_eval_metrics
     )
     metrics = check_metrics(metrics, dict_metrics, mode=conf["library"])
 
@@ -219,13 +220,13 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
                 ignore_index=True,
             )
 
-        elif conf["library"] == "ngen.eval":
+        elif conf["library"] == "nwm.eval":
             thresholds = [
                 conf["flow_threshold_categorical"],
                 conf["flow_threshold_event"],
             ]
             df_metrics = pd.concat(
-                [df_metrics, calc_ngen_eval_metrics(pair_file1, metrics, thresholds)],
+                [df_metrics, calc_nwm_eval_metrics(pair_file1, metrics, thresholds)],
                 ignore_index=True,
             )
 
@@ -248,7 +249,7 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
 
 def calc_metrics(conf: dict, data_paths: dict):
     # library for calculating metrics
-    supported_libraries = {"teehr", "ngen.eval"}
+    supported_libraries = {"teehr", "nwm.eval"}
     if "library" not in conf["metrics"]:
         raise KeyError("Missing required key: 'library' in metric configuration.")
     library = conf["metrics"]["library"]

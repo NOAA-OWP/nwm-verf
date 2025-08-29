@@ -168,7 +168,7 @@ dict_teehr_metrics = {
     "aprBIAS": "annual_peak_relative_bias",
 }
 
-dict_ngen_eval_metrics = {
+dict_nwm_eval_metrics = {
     "CORR": "pearson correlation",
     "NSE": "nash_sutcliffe_efficiency",
     "NNSE": "nash_sutcliffe_efficiency_normalized",
@@ -195,8 +195,8 @@ dict_ngen_eval_metrics = {
 def data_paths(conf: dict) -> dict:
     conf1 = conf["general"]
     conf2 = conf["file_paths"]
-    root_dir = conf2["data_dir_root"]
-    sub_dir = conf1["location_set_name"]
+    root_dir = conf2["base_dir"]
+    sub_dir = conf2["output_dir"]  # conf1["location_set_name"]
     config = conf1["nwm_configuration"]
 
     # paths for all observations
@@ -238,14 +238,15 @@ def data_paths(conf: dict) -> dict:
 
     # path for crosswalk file
     cwt_file = dict()
+    print(conf2["crosswalk_file"])
     for ver1 in list(set(conf1["nwm_version"])):
         if ver1 in conf2["crosswalk_file"].keys():
             cwt_file[ver1] = Path(conf2["crosswalk_file"][ver1])
-        else:
+        elif ver1 != "ngen":
             raise Exception(f"crosswalk file not found for {ver1}")
 
     # path for geometry file
-    geo_file = Path(conf2["geometry_file"]).resolve(strict=True)
+    geo_file = Path(conf2["gage_hydrofabric_file"]).resolve(strict=True)
 
     # assemble all paths into a dictionary
     data_paths = {

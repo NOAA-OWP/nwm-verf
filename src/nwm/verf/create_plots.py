@@ -11,7 +11,7 @@ import pandas as pd
 import seaborn as sns
 
 from .settings import (
-    dict_ngen_eval_metrics,
+    dict_nwm_eval_metrics,
     dict_teehr_metrics,
     get_metric_bins,
     get_metric_colormap,
@@ -26,8 +26,8 @@ logging.basicConfig(level=logging.INFO)
 def get_metric_long_name(metrics: list, library: str):
     if library == "teehr":
         dict1 = dict_teehr_metrics
-    elif library == "ngen.eval":
-        dict1 = dict_ngen_eval_metrics
+    elif library == "nwm.eval":
+        dict1 = dict_nwm_eval_metrics
     else:
         raise Exception(f" Metric libray not supported: {library}")
 
@@ -114,8 +114,7 @@ def create_spatial_maps(conf: dict, data_paths: dict):
 
     # add geometry (lat/lon)
     df_geo = gpd.read_parquet(data_paths["geofile"])
-    df_geo = df_geo[["id", "geometry"]]
-    df_geo = df_geo.rename(columns={"id": "primary_location_id"})
+    df_geo = df_geo[["primary_location_id", "geometry"]]
     gdf_metrics = df_geo.merge(df_metrics, on="primary_location_id", how="inner")
 
     fig_dir = Path(data_paths["plots"], "maps")

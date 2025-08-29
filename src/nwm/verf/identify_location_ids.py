@@ -4,6 +4,8 @@ from typing import Dict, List, Optional, Union
 
 import pandas as pd
 
+from .utils import read_table
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
@@ -20,7 +22,7 @@ __all__ = [
 
 # get location link ID based on gage ID and crosswalk
 def get_link_by_gage(gages: List[str], crosswalk_file: str):
-    cwt = pd.read_parquet(crosswalk_file)
+    cwt = read_table(crosswalk_file)
     cwt.rename(columns={"primary_location_id": "gage"}, inplace=True)
 
     df = pd.DataFrame(list(map("usgs-".__add__, gages)), columns=["gage"])
@@ -40,7 +42,7 @@ def get_link_by_gage(gages: List[str], crosswalk_file: str):
 
 # get location gage ID based on link ID and crosswalk
 def get_gage_by_link(links: int, crosswalk_file: str):
-    cwt = pd.read_parquet(crosswalk_file)
+    cwt = read_table(crosswalk_file)
     cwt.rename(columns={"primary_location_id": "gage"}, inplace=True)
     cwt.rename(columns={"secondary_location_id": "link"}, inplace=True)
 
@@ -65,7 +67,7 @@ def get_link_id_from_file(
     f1 = Path(id_file).absolute()
     if not f1.exists():
         raise FileNotFoundError(f1)
-    df = pd.read_csv(f1, sep=None, comment="#", engine="python")
+    df = read_table(f1)
     df.columns = [x.lower() for x in df.columns]
     locations = []
     link1 = nwm_ver + "_link"
@@ -125,8 +127,7 @@ def get_locations_from_config_list(
 # get nwm link ids for the locations for retrieveing the forecasts
 def get_nwm_link_ids(conf: dict, nwm_ver: str) -> list:
     location_list = conf["general"]["location_list"]
-    print(f"location_list = {location_list}")
-    location_type = conf["general"]["location_type"]
+    # location_type = conf["general"]["location_type"]
     location_list_file = conf["file_paths"]["location_list_file"]
     crosswalk_file = conf["file_paths"]["crosswalk_file"]
 
@@ -162,11 +163,11 @@ def get_gage_id_from_file(
     f1 = Path(id_file).absolute()
     if not f1.exists():
         raise FileNotFoundError(f1)
-    df = pd.read_csv(f1, sep=None, comment="#", dtype={"gage": str}, engine="python")
+    df = read_table(f1)
     df.columns = [x.lower() for x in df.columns]
     locations = []
-    if "gage" in df.columns:
-        locations = df["gage"].tolist()
+    if "primary_location_id" in df.columns:
+        locations = df["primary_location_id"].tolist()
     else:
         # check for link columns
         cols = [c1 for c1 in df.columns if "link" in c1]
@@ -182,7 +183,7 @@ def get_gage_id_from_file(
                         logger.info(f"crosswalk file not found: {cwf}")
         else:
             raise ValueError(
-                "No gage or NWM link column (e.g., nwmv30_link) is not found in location file"
+                "No primary_location_id or NWM link column (e.g., nwmv30_link) is not found in location file"
             )
 
     return locations
@@ -193,7 +194,7 @@ def get_usgs_gage_ids(conf: dict) -> list:
     location_list = conf["general"]["location_list"]
     location_list_file = conf["file_paths"]["location_list_file"]
     crosswalk_file = conf["file_paths"]["crosswalk_file"]
-    gage_meta_file = conf["file_paths"]["gage_meta_file"]
+    hydro_file = conf["file_paths"]["gage_hydrofabric_file"]
 
     locations = []
     if location_list is not None:
@@ -207,21 +208,21 @@ def get_usgs_gage_ids(conf: dict) -> list:
         )
 
     # only accept usgs locations for now
-    gage_meta_file = Path(gage_meta_file).absolute()
-    if not gage_meta_file.exists():
-        raise FileNotFoundError(gage_meta_file)
-    df = pd.read_csv(gage_meta_file, sep=None, comment="#", engine="python")
+    df = read_table(hydro_file)
     # gages = [x for x in locations if df[df['gage']==x]['agency'].iloc[0] == 'USGS']
+    locations = ["usgs-" + x for x in locations]
     gages = [
         x
         for x in locations
-        if not df[df["gage"] == x].empty
-        and df[df["gage"] == x]["agency"].iloc[0] == "USGS"
+        if not df[df["primary_location_id"] == x].empty
+        and df[df["primary_location_id"] == x]["agency"].iloc[0].upper() == "USGS"
     ]
 
     missed = [x for x in locations if x not in gages]
     if len(missed) > 0:
         logger.info(f"  The following non-usgs locations will be dropped {missed}")
+
+    gages = [x.replace("usgs-", "") for x in gages]
 
     return gages
 

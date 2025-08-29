@@ -2,6 +2,8 @@ data/
 data
 venv/
 venv
+tbd
+tbd/
 .vscode/
 __pycache__
 .idea
