@@ -78,17 +78,7 @@ def main(config_file: str | Path):
     step1 = "plot_metrics"
     if steps[step1]:
         with timing_block(step1):
-            # spatial maps
-            if conf["plots"]["spatial_map"]["plot"]:
-                create_plots.create_spatial_maps(conf, data_paths)
-
-            # histograms
-            if conf["plots"]["histogram"]["plot"]:
-                create_plots.create_histograms(conf, data_paths)
-
-            # boxplots
-            if conf["plots"]["boxplot"]["plot"]:
-                create_plots.create_boxplots(conf, data_paths)
+            create_plots.create_all_plots(conf, data_paths)
 
 
 if __name__ == "__main__":

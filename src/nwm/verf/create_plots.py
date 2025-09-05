@@ -1,6 +1,7 @@
 import logging
 from functools import reduce
 from pathlib import Path
+from typing import List, Union
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
@@ -391,3 +392,93 @@ def create_histograms(conf: dict, data_paths: dict):
             plt.savefig(fig_file)
 
     logger.info(f"  Histograms created at: {fig_dir}")
+
+
+def create_timeseries_plot(conf: dict, data_paths: dict):
+    # Load all files and merge on "value_time"
+    merged_df = None
+    for dataset in conf["general"]["dataset_name"]:
+        file = data_paths["joined"].get(dataset, None)
+        if file is None or not Path(file).exists():
+            msg = f"File not found for dataset {dataset}: {file}"
+            logger.error(msg)
+            raise FileNotFoundError(msg)
+
+        df = pd.read_parquet(file)[
+            ["value_time", "primary_value", "secondary_value", "measurement_unit"]
+        ]
+        unit = (
+            df["measurement_unit"].iloc[0]
+            if not df["measurement_unit"].isnull().all()
+            else None
+        )
+        df.drop(columns=["measurement_unit"], inplace=True)
+        df = df.rename(columns={"secondary_value": dataset})
+
+        if merged_df is None:
+            merged_df = df
+        else:
+            merged_df = pd.merge(
+                merged_df,
+                df[["value_time", dataset]],
+                on="value_time",
+            )
+
+    # Ensure datetime
+    merged_df["value_time"] = pd.to_datetime(merged_df["value_time"])
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+    # plt.figure(figsize=(12, 6))
+    ax.plot(
+        merged_df["value_time"],
+        merged_df["primary_value"],
+        label="Observed",
+        color="black",
+        linewidth=1.2,
+    )
+
+    for dataset in conf["general"]["dataset_name"]:
+        ax.plot(
+            merged_df["value_time"],
+            merged_df[dataset],
+            label=dataset,
+        )
+
+    ax.set_xlabel("Time")
+    ax.set_ylabel(f"Streamflow ({unit})")
+    ax.set_title(
+        f"Simulated vs Observed Streamflow at {conf['general']['location_list'][0]}\n"
+        f"{conf['general']['nwm_configuration']}    T0 = {conf['general']['forecast_start_date'][0]}"
+    )
+    ax.legend()
+    ax.grid(True)
+
+    fig.autofmt_xdate()
+
+    # save plot to png
+    fig_dir = Path(data_paths["plots"], "timeseries")
+    fig_dir.mkdir(parents=True, exist_ok=True)
+    file1 = "ts_" + conf["general"]["location_list"][0] + ".png"
+    conf1 = conf["plots"]["time_series"]
+    if "tag" in conf1.keys() and conf1["tag"] is not None:
+        file1 = (
+            "ts_" + conf["general"]["location_list"][0] + "_" + conf1["tag"] + ".png"
+        )
+    fig_file = Path(fig_dir, file1)
+    plt.savefig(fig_file)
+
+
+def create_all_plots(conf: dict, data_paths: dict):
+    """Create all plots based on the configuration."""
+    plot_functions = {
+        "spatial_map": create_spatial_maps,
+        "histogram": create_histograms,
+        "boxplot": create_boxplots,
+        "time_series": create_timeseries_plot,
+    }
+
+    for plot_type, func in plot_functions.items():
+        plot_conf = conf["plots"].get(plot_type) or {}
+        if plot_conf.get("plot", False):
+            func(conf, data_paths)

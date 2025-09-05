@@ -123,12 +123,20 @@ class SpatialMapConfig(BasePlotConfig):
     scaling: Optional[Dict[str, List[Number]]] = None
 
 
+class TimeSeriesConfig(BaseModel):
+    """Config for time series plots"""
+
+    plot: Optional[bool] = False
+    tag: Optional[str] = None
+
+
 class PlotsConfig(BaseModel):
     """Data model for the 'plots' section of the config file"""
 
-    histogram: HistogramConfig
-    boxplot: BoxPlotConfig
-    spatial_map: SpatialMapConfig
+    histogram: Optional[HistogramConfig] = None
+    boxplot: Optional[BoxPlotConfig] = None
+    spatial_map: Optional[SpatialMapConfig] = None
+    time_series: Optional[TimeSeriesConfig] = None
 
 
 class Config(BaseModel):

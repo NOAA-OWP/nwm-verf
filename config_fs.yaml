@@ -23,7 +23,7 @@ general:
   location_type: usgs_gage
 
   variable_name: streamflow # currently only 'streamflow' is supported
-  nwm_configuration: medium_range_mem1  # Currently, only short_range, short_range_alaska, short_range_hawaii, and short_range_puertorico are supported
+  nwm_configuration: medium_range_mem1  
 
   # user-specified name of datasets (used for creating sub-folders for datasets and plots)
   # must be a list of one or more strings
@@ -158,134 +158,8 @@ metrics:
 #   1) 'metric_subset' must be a subset of metrics defined for calculation (i.e., 'metric_subset' defined in Section 'metrics')
 #   2) 'lead_times' must be a subset of lead times defined for metrics calculation (i.e., 'lead_times' defined in Section 'metrics')
 plots:
-  histogram:
+  time_series:
 
-    # whether to create histogram plots
-    plot: false
-
-    # list of metrics to create histogram plots for
-    metric_subset: [KGE, NSE, CORR, NNSE]
-
-    # for each metric, define list of bin edges for generating the histogram plot
-    # For 'KGE','NSE','CORR' and 'NNSE', default bins (see settings.py) will be used if not defined. 
-    # For other metrics, the data will be cut into 8 equal-width bins if bin edges are not provided 
-    binning:
-      KGE: [-inf, -1, -0.5, 0, 0.2, 0.4, 0.6, 0.8, 1.0]
-      NSE: [-inf, -1, -0.5, 0, 0.2, 0.4, 0.6, 0.8, 1.0]
-      NNSE: [0, 0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0]
-      CORR: [-1, -0.5, 0, 0.2, 0.4, 0.6, 0.8, 1.0]
-
-    # list of lead times (in hours) to create histograms for
-    lead_times: ['all_aggregated']
-
-    # define a string that gets added to the filename of histogram plots to differentiate between plots 
-    # of different lead time groups or different binning scenarios, to avoid overwriting the existing plots. 
-    # Leave it blank if overwriting is desired
-    tag:
-
-  boxplot: # the same comments for histogram apply here (except for binning)
-    plot: false
-    metric_subset: [KGE, NSE, CORR, NNSE]
-
-    # Define an appropriate range (min/max) for each metric to scale the boxplot.
-    # Default ranges (see settings.py) will be applied for 'KGE', 'NSE', 'CORR', and 'NNSE' if not specified.
-    # For other metrics, if a range is not defined, values will remain unscaled, 
-    #    which may result in improperly displayed statistics due to outliers.    
-    scaling:
-      KGE: [-0.5, 1]
-      NSE: [-0.5, 1]
-      CORR: [-0.5, 1]
-      NNSE: [0, 1]
-      RSR: [0, 20]
-      MAE: [0, 5]
-      RMSE: [0, 20]
-      PBIAS: [-100, 300]
-
-    lead_times: ['all_aggregated']
-    show_outliers: false
-    tag:
-
-  spatial_map:
-    plot: false
-
-    # list of metrics to create spatial maps for
-    metric_subset: [KGE, NSE, CORR, NNSE]
-
-    # Define an appropriate range (min/max) for each metric to scale the values for the spatial map
-    scaling:
-      KGE: [-0.5, 1]
-      NSE: [-0.5, 1]
-      CORR: [-0.5, 1]
-      NNSE: [0, 1]
-      RSR: [0, 20]
-      MAE: [0, 20]
-      RMSE: [0, 20]
-      PBIAS: [-100, 300]
-
-    lead_times: ['all_aggregated']
-
-    # define a string that gets added to the filename of spatial map plots to avoid overwriting the existing ones (if any)
-    tag:
-
-############### DONE WITH CONFIGURATIONS #######################                  
-#--------- List of currently supported metrics for teehr and nwm.eval -----------
-# both short and long names of the metrics are accepted
-#
-### supported metrics for teehr
-    # 'n_obs': 'primary_count', 
-    # 'n_mod': 'secondary_count',
-    # 'min_obs': 'primary_minimum', 
-    # 'min_mod': 'secondary_minimum', 
-    # 'max_obs': 'primary_maximum',
-    # 'max_mod': 'secondary_maximum', 
-    # 'mean_obs': 'primary_average', 
-    # 'mean_mod': 'secondary_average',
-    # 'sum_obs': 'primary_sum', 
-    # 'sum_mod': 'secondary_sum', 
-    # 'var_obs': 'primary_variance',
-    # 'var_mod': 'secondary_variance', 
-    # 'max_delta': 'max_value_delta', 
-    # 'NSE': 'nash_sutcliffe_efficiency',
-    # 'NNSE': 'nash_sutcliffe_efficiency_normalized', 
-    # 'KGE': 'kling_gupta_efficiency',
-    # 'KGE1': 'kling_gupta_efficiency_mod1', 
-    # 'KGE2': 'kling_gupta_efficiency_mod2',
-    # 'ME': 'mean_error', 
-    # 'MAE': 'mean_absolute_error', 
-    # 'MSE': 'mean_squared_error',
-    # 'RMSE': 'root_mean_squared_error',
-    # 'pt_obs': 'primary_max_value_time',
-    # 'pt_mod': 'secondary_max_value_time', 
-    # 'pt_err': 'max_value_timedelta',
-    # 'RBIAS': 'relative_bias',
-    # 'MBAIS': 'multiplicative_bias', 
-    # 'RMAE': 'mean_absolute_relative_error',
-    # 'CORR': 'pearson_correlation',
-    # 'sCORR': 'spearman_correlation',    
-    # 'R2': 'r_squared', 
-    # 'aprBIAS': 'annual_peak_relative_bias',
-
-
-##### supported metrics for nwm.eval
-    # 'CORR': 'pearson correlation',
-    # 'NSE': 'nash_sutcliffe_efficiency',
-    # 'NNSE': 'nash_sutcliffe_efficiency_normalized', 
-    # 'NSElog': "logrithmic nash_sutcliffe_efficiency",
-    # 'NSEwt': 'weighted NSE and NSElog',
-    # 'KGE': 'kling_gupta_efficiency',
-    # 'MAE': 'mean_absolute_error', 
-    # 'RMSE': 'root_mean_squared_error',
-    # 'PBIAS': 'percent_bias',
-    # 'RSR': 'RMSE_observation_std_ratio',
-    # 'HSEG_FDC': 'pbias_high_flow_FDC',
-    # 'MSEG_FDC': 'pbias_medium_flow_FDC',
-    # 'LSEG_FDC': 'pbias_low_flow_FDC',
-    # 'POD': 'probability_of_detection',
-    # 'FAR': 'false_alarm_ratio',
-    # 'CSI': 'critical_success_index',
-    # 'FBIAS': 'frequency_bias',
-    # 'PKBIAS': 'percent_peak_flow_bias',
-    # 'PKTE': 'peak_timing_error',
-    # 'EVBIAS': 'event_volume_bias',
-
+    # whether to create time series plots
+    plot: true
 
