@@ -10,7 +10,7 @@ from teehr.classes.duckdb_joined_parquet import DuckDBJoinedParquet
 
 import nwm.eval.metric_functions as mf
 
-from .nwm_configs import interpret_lead_times
+from .nwm_configs import ForecastConfig
 from .settings import dict_nwm_eval_metrics, dict_teehr_metrics
 
 # from .utils import get_key_from_value
@@ -211,7 +211,8 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
     #         x for x in lead_times if x != "all_aggregated"
     #     ]
     nwm_config = conf["general"]["nwm_configuration"]
-    lead_times, missed_leads = interpret_lead_times(
+    fc = ForecastConfig(conf["file_paths"]["fcst_config_file"])
+    lead_times, missed_leads = fc.interpret_lead_times(
         conf_met["lead_times"], nwm_config, leads0
     )
     if missed_leads:
@@ -227,7 +228,13 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
         leads1 = l1.split("-")
         if len(leads1) == 1:
             leads1 = leads1 + leads1
-        leads1 = list(range(int(leads1[0]), int(leads1[1]) + lead_step, lead_step))
+        # leads1 = list(range(int(leads1[0]), int(leads1[1]) + lead_step, lead_step))
+
+        start = float(leads1[0])
+        end = float(leads1[1])
+        step = float(lead_step)
+
+        leads1 = list(np.arange(start, end + step, step))
 
         # get paired data for the current lead time
         df1 = df0[df0["lead_time"].isin(leads1)]
@@ -296,7 +303,7 @@ def calc_metrics(conf: dict, data_paths: dict):
         else:
             # calculate metrics for each group of paired data and append to a single parquet file
             pair_path = data_paths["joined"][dataset]
-            pair_files = list(pair_path.parent.glob(f"{pair_path.stem}.group*.parquet"))
+            pair_files = list(pair_path.parent.glob(f"{pair_path.stem}*.parquet"))
             for i1, pair_file in enumerate(pair_files):
                 if len(pair_files) > 1:
                     logger.info(f"  Calculating metrics for {dataset} group {i1} ...")
@@ -304,11 +311,36 @@ def calc_metrics(conf: dict, data_paths: dict):
                     logger.info(f"  Calculating metrics for {dataset} ...")
 
                 df_metrics = calc_metrics_group(conf, pair_file, data_paths["geofile"])
-                if i1 == 0:
-                    df_metrics.to_parquet(
-                        metric_file, engine="fastparquet", index=False
-                    )
+
+                # write metrics to file
+                metric_path = Path(metric_file)
+
+                if metric_path.suffix.lower() == ".parquet":
+                    if i1 == 0:
+                        df_metrics.to_parquet(
+                            metric_file, engine="fastparquet", index=False
+                        )
+                    else:
+                        df_metrics.to_parquet(
+                            metric_file, engine="fastparquet", index=False, append=True
+                        )
+
+                elif metric_path.suffix.lower() == ".csv":
+                    if i1 == 0:
+                        df_metrics.to_csv(metric_file, index=False)
+                    else:
+                        # Append without writing the header
+                        df_metrics.to_csv(
+                            metric_file, mode="a", index=False, header=False
+                        )
+
                 else:
-                    df_metrics.to_parquet(
-                        metric_file, engine="fastparquet", index=False, append=True
-                    )
+                    raise ValueError(f"Unsupported file type: {metric_path.suffix}")
+                # if i1 == 0:
+                #     df_metrics.to_parquet(
+                #         metric_file, engine="fastparquet", index=False
+                #     )
+                # else:
+                #     df_metrics.to_parquet(
+                #         metric_file, engine="fastparquet", index=False, append=True
+                #     )

@@ -220,7 +220,10 @@ def data_paths(conf: dict) -> dict:
 
         # create additional directory for storing symbolic links to parquet files required for each dataset
         fcst_data_link_dir[dataset] = Path(
-            root_dir, sub_dir, conf1["dataset_name"][idx], "fcst"
+            root_dir,
+            sub_dir,
+            conf1["dataset_name"][idx],
+            conf1["nwm_configuration"],  # "fcst"
         )
 
         # path for joined parquet files (note in pair_data.py, 'group*' will be added to the file name for individual location groups)
@@ -237,12 +240,14 @@ def data_paths(conf: dict) -> dict:
             root_dir, sub_dir, "metrics", filename.replace("joined", "metrics")
         )
 
+        if conf["metrics"]["file_format"] == "csv":
+            metric_file[dataset] = metric_file[dataset].with_suffix(".csv")
+
     # path for plots
     plot_dir = Path(root_dir, sub_dir, "plots", conf1["nwm_configuration"])
 
     # path for crosswalk file
     cwt_file = dict()
-    print(conf2["crosswalk_file"])
     for ver1 in list(set(conf1["nwm_version"])):
         if ver1 in conf2["crosswalk_file"].keys():
             cwt_file[ver1] = Path(conf2["crosswalk_file"][ver1])

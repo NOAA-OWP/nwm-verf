@@ -23,19 +23,19 @@ general:
   location_type: usgs_gage
 
   variable_name: streamflow # currently only 'streamflow' is supported
-  nwm_configuration: medium_range_mem1   # Currently, only short_range, short_range_alaska, short_range_hawaii, and short_range_puertorico are supported
+  nwm_configuration: medium_range_mem1  # Currently, only short_range, short_range_alaska, short_range_hawaii, and short_range_puertorico are supported
 
   # user-specified name of datasets (used for creating sub-folders for datasets and plots)
   # must be a list of one or more strings
-  dataset_name: [noah_cfes, noah_sac]
+  dataset_name: [noah_cfes]
 
   # list of NWM versions; must have the same length as 'dataset_name'. Currently only option is "nwm30"
-  nwm_version: [ngen, ngen]
+  nwm_version: [ngen]
 
   # list of start/end dates for forecast verification period; list must have the same length as 'dataset_name'
   # date ranges specified must be applicable to the corresponding NWM archive in Google Cloud 
-  forecast_start_date: ['2022-12-01', '2022-12-01']
-  forecast_end_date: ['2022-12-01', '2022-12-01']
+  forecast_start_date: ['2022-12-01 00:00:00']
+  forecast_end_date: ['2022-12-01 00:00:00']
 
 #### configurations for various file paths
 # sample files can be obtained from repo at nwm-verf/sample_files/gage_files
@@ -67,6 +67,9 @@ file_paths:
   # gage hydrofabric file (including geometry)
   gage_hydrofabric_file: '{base_dir}/inputs/gage_files/gage_hydrofabric_all_domains.parquet'
 
+  # NWM forecast configuration file
+  fcst_config_file: '{base_dir}/inputs/nwm_forecast_configuration.yaml'
+
   # forecast data directory (must be specified when nwm_forecast.data_source is set to ngenCERF)
   fcst_data_file: '{base_dir}/inputs/{location_set_name}/{dataset_name}/{nwm_configuration}.csv'
 
@@ -76,7 +79,7 @@ file_paths:
 #### configurations for retrieving NWM forecast data (typically no need to change)
 nwm_forecast:
   data_source: ngenCERF    # Specifies the remote location from which to fetch the data ("GCS", "NOMADS", "DSTOR", "ngenCERF")
-  fetch_fcst: [true, true]  # whether to fetch the forecast data for each dataset listed in ['general']['dataset_name']
+  fetch_fcst: [true]  # whether to fetch the forecast data for each dataset listed in ['general']['dataset_name']
   output_type: channel_rt
   t_minus: [0, 1, 2]  # Only used if an assimilation run is selected
   kerchunk_method: local  # When data_source = "GCS", specifies the preference in creating Kerchunk reference json files.
@@ -103,7 +106,7 @@ nwm_forecast:
 flow_observation:
   usgs: # flow obs retrieved will be stored at [data_dir_root]/[location_set_name]/usgs
     chunk_by: month   # data are saved in parquet files by day/month/year
-    overwrite_output: false  # If True, existing output files will be overwritten; if False, existing files are retained
+    overwrite_output: True  # If True, existing output files will be overwritten; if False, existing files are retained
     memory_per_worker_gb: 3  # configurable memory (in GB) assigned to each worker
 
 #### paired data generation
@@ -147,6 +150,9 @@ metrics:
   #lead_times: [1,3,5,'1-3','1-5','4-6','6-10']
   lead_times: ['all_aggregated']
 
+  # file format for metrics. Options are: parquet, csv. Default is parquet.
+  file_format: parquet
+
 #### configuration for plots
 # For each type of plots (histogram, boxplot, spatial map), 
 #   1) 'metric_subset' must be a subset of metrics defined for calculation (i.e., 'metric_subset' defined in Section 'metrics')
@@ -155,7 +161,7 @@ plots:
   histogram:
 
     # whether to create histogram plots
-    plot: true
+    plot: false
 
     # list of metrics to create histogram plots for
     metric_subset: [KGE, NSE, CORR, NNSE]
@@ -178,7 +184,7 @@ plots:
     tag:
 
   boxplot: # the same comments for histogram apply here (except for binning)
-    plot: true
+    plot: false
     metric_subset: [KGE, NSE, CORR, NNSE]
 
     # Define an appropriate range (min/max) for each metric to scale the boxplot.
@@ -200,7 +206,7 @@ plots:
     tag:
 
   spatial_map:
-    plot: true
+    plot: false
 
     # list of metrics to create spatial maps for
     metric_subset: [KGE, NSE, CORR, NNSE]

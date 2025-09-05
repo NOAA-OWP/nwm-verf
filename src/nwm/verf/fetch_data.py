@@ -20,51 +20,114 @@ from tenacity import (
     wait_exponential,
 )
 
-from .nwm_configs import get_nwm_cycle_config, get_nwm_fcst_window_timestep
-from .utils import create_hour_sequence, get_n_workers, read_data, save_data
+from .nwm_configs import ForecastConfig
+from .utils import create_time_sequence, get_n_workers, read_data, save_data
 
 warnings.filterwarnings("ignore", message="Compute Engine Metadata server unavailable")
 
 import logging
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-
-# Mute Dask logs
-logging.getLogger("distributed").setLevel(logging.WARNING)
-logging.getLogger("dask").setLevel(logging.WARNING)
-logging.getLogger("tornado.application").setLevel(logging.ERROR)
 
 
-# Retry on network/server disconnection-related errors
-@retry(
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=2, min=1, max=30),  # exponential backoff
-    retry=retry_if_exception_type((ServerDisconnectedError, ClientOSError)),
-    reraise=True,
-)
-def safe_fetch_usgs(site_codes: list, dates: list, conf: dict, out_dir: str):
+def get_fcst_info(conf: dict) -> tuple[int, int, pd.Timestamp]:
+    """Get the forecast window size, time step, and reference time for a given NWM configuration."""
+    # validate forecast cycle
+    nwm_config = conf["general"]["nwm_configuration"]
+    fc = ForecastConfig(conf["file_paths"]["fcst_config_file"])
+    fc.validate_cycle_info(nwm_config)
+
+    # define reference time
+    reference_time = pd.to_datetime(conf["general"]["forecast_start_date"][0])
+
+    if reference_time.hour not in fc.get_valid_cycles(nwm_config):
+        msg = f"Invalid hour/cycle ({reference_time.hour}) for forecast_start_date. "
+        msg += f"Valid cycles are: {fc.get_valid_cycles(nwm_config)}"
+        logger.error(msg)
+        raise ValueError(msg)
+
+    # get time step and forecast window for the configuration and cycle
+    win_size, time_step = fc.get_fcst_window_timestep(
+        nwm_config, int(reference_time.hour)
+    )
+
+    return win_size, time_step, reference_time
+
+
+def check_existing_obs_data(obs_dir: str | Path) -> list:
+    """Check existing parquet files of usgs obs and get the dates for previously downloaded data."""
+    dates0 = list()
+    parquet_files = glob.glob(str(obs_dir) + "/*.parquet")
+    if len(parquet_files):
+        periods = sorted(
+            [os.path.basename(x).split(".")[0].split("_") for x in parquet_files]
+        )
+        for p1 in periods:
+            if len(p1) == 1:
+                p1 = [p1[0], p1[0]]
+            dates0 = dates0 + create_time_sequence(
+                p1[0], p1[1], freq_hour=24, start_hour=0, end_hour=23
+            )
+        dates0 = sorted(list(set(dates0)))
+
+    return dates0
+
+
+def check_missing_obs_data(obs_dir: str | Path, conf: dict) -> list[pd.Timestamp]:
+    """Check for missing observation data in the specified directory."""
+    # Get existing observation dates
+    parquet_files = glob.glob(str(obs_dir) + "/*.parquet")
+    df = pd.DataFrame()
+    for p in parquet_files:
+        df = pd.concat([df, pd.read_parquet(p)], ignore_index=True)
+    existing_dates = df["value_time"].unique().tolist()
+
+    # Get required observation dates
+    fcst_win, time_step, _ = get_fcst_info(conf)
+    conf1 = conf["general"]
+    for i1 in range(len(conf1["forecast_start_date"])):
+        start_date = pd.to_datetime(conf1["forecast_start_date"][i1]) + pd.Timedelta(
+            hours=time_step
+        )
+        end_date = pd.to_datetime(conf1["forecast_end_date"][i1]) + pd.Timedelta(
+            hours=fcst_win
+        )
+        required_dates = create_time_sequence(start_date, end_date, freq_hour=time_step)
+
+        # Check for missing dates
+        missing_dates = [d for d in required_dates if d not in existing_dates]
+        if missing_dates:
+            formatted = ", ".join(
+                [d.strftime("%Y-%m-%d %H:%M:%S") for d in missing_dates]
+            )
+            logger.warning(f"Missing observation data for dates: {formatted}")
+
+
+def safe_fetch_usgs(
+    site_codes: list, dates: list, conf: dict, out_dir: str, hourly: bool = True
+):
     usgs_to_parquet(
         sites=site_codes,
         start_date=min(dates),
-        end_date=max(dates),
+        end_date=max(dates) + pd.Timedelta(hours=23),
         output_parquet_dir=out_dir,
         chunk_by=conf["chunk_by"],
+        filter_to_hourly=hourly,
         overwrite_output=conf["overwrite_output"],
     )
 
 
 def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
-    """
-    Retrieve USGS streamflow observations given configuration and a list of gage IDs
+    """Retrieve USGS streamflow observations given configuration and a list of gage IDs.
 
-    locations: dictionary containing USGS gage IDs for which observations are to be retrieved
-    conf: dictionary defining the configurations (e.g., config.yaml)
+    Args:
+        locations: dictionary containing USGS gage IDs for which observations are to be retrieved
+        conf: dictionary defining the configurations (e.g., config.yaml)
+        output_dir: path to store the observation data
 
     Data retrieved will be saved in parquet files by chunk (e.g., month) in the data directory defined in conf
 
     """
-
     # get the list of unique USGS gage IDs
     list_usgs = list(
         {item for subdict in locations.values() for item in subdict["primary"]}
@@ -73,36 +136,27 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
     # get some general information
     conf1 = conf["general"]
     conf2 = conf["flow_observation"]["usgs"]
-    config = conf1["nwm_configuration"]
 
     # check existing parquet files of usgs obs and get the dates for previously downloaded data
     dates0 = list()
-    parquet_files = glob.glob(str(output_dir) + "/*.parquet")
-    if len(parquet_files) > 0 and not conf2["overwrite_output"]:
-        periods = sorted(
-            [os.path.basename(x).split(".")[0].split("_") for x in parquet_files]
-        )
-        for p1 in periods:
-            if len(p1) == 1:
-                p1 = [p1[0], p1[0]]
-            dates0 = dates0 + create_hour_sequence(
-                p1[0], p1[1], start_hour=0, end_hour=23, freq_hour=24
-            )
-        dates0 = sorted(list(set(dates0)))
+    if not conf2["overwrite_output"]:
+        dates0 = check_existing_obs_data(str(output_dir))
         dates0 = [x.strftime("%Y-%m-%d") for x in dates0]
-        logger.info(
-            f"  Existing USGS parquet files for {min(dates0)} to {max(dates0)} will be used"
-        )
+        if len(dates0) > 0:
+            logger.info(
+                f"  Existing USGS parquet files for {min(dates0)} to {max(dates0)} will be used"
+            )
 
     # identify start and end dates of observations required by all NWM forecasts datasets
     dates = list()
     for i1 in range(len(conf1["forecast_start_date"])):
         start_date = conf1["forecast_start_date"][i1]
         end_date = conf1["forecast_end_date"][i1]
-        win1, timestep1 = get_nwm_fcst_window_timestep(config)
-        end_date = pd.Timestamp(end_date) + pd.Timedelta(win1 + 24, unit="hours")
-        dates = dates + create_hour_sequence(
-            start_date, end_date, start_hour=0, end_hour=23, freq_hour=24
+        fcst_win1, timestep1, reference_time = get_fcst_info(conf)
+        end_date = pd.Timestamp(end_date) + pd.Timedelta(fcst_win1 + 24, unit="hours")
+        end_date = end_date.strftime("%Y-%m-%d %H:%M:%S")
+        dates = dates + create_time_sequence(
+            start_date, end_date, freq_hour=24, start_hour=0, end_hour=23
         )
 
     dates = sorted(list(set(dates)))
@@ -138,6 +192,7 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
         n_workers = get_n_workers(mem_limit)
 
         # loop through the date chunks to download USGS data
+        hourly = False if timestep1 < 1 else True
         for d1 in date_list:
             logger.info(f"  Downloading USGS data for {min(d1)} to {max(d1)} ...")
 
@@ -152,7 +207,7 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
                 Client(cluster) as client,
             ):
                 try:
-                    safe_fetch_usgs(list_usgs, d1, conf2, str(output_dir))
+                    safe_fetch_usgs(list_usgs, d1, conf2, str(output_dir), hourly)
                 except (ServerDisconnectedError, ClientOSError) as e:
                     logger.warning(f"Failed to fetch USGS data after retries: {e}")
 
@@ -163,23 +218,22 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
             f"  USGS observation data are saved in parquet files at: {output_dir}"
         )
 
+    # Check for missing observation data if list_usgs contains only one location (e.g., for ngenCERF forecasts)
+    if len(list_usgs) == 1:
+        check_missing_obs_data(output_dir, conf)
 
-def retrieve_fcsts_ngencerf(locations: dict, conf: dict, data_paths: dict):
+
+def retrieve_fcsts_ngencerf(conf: dict, data_paths: dict):
     """Retrieve NWM forecasts given the configurations and list of locations from the NGENCERF data source.
 
     The forecast files are generated by ngenCERF on the server.
     """
-    # get time step and forecast window for the configuration
-    win_size, time_step = get_nwm_fcst_window_timestep(
-        conf["general"]["nwm_configuration"]
-    )
-    win_size = int(win_size)
-    time_step = int(time_step)
+    # get time step and forecast window for the configuration and cycle
+    win_size, time_step, reference_time = get_fcst_info(conf)
 
     # Define time window for forecasts
-    reference_time = pd.to_datetime(conf["general"]["forecast_start_date"][0])
     start_time = reference_time + pd.Timedelta(hours=time_step)
-    end_time = start_time + pd.Timedelta(hours=win_size - 1).round("s")
+    end_time = start_time + pd.Timedelta(hours=win_size - time_step).round("s")
 
     # read forecast data from file for each dataset
     for dataset in conf["general"]["dataset_name"]:
@@ -202,7 +256,6 @@ def retrieve_fcsts_ngencerf(locations: dict, conf: dict, data_paths: dict):
                 f"Available data time period is {df_fcst['Time'].min()} to {df_fcst['Time'].max()}"
             )
             logger.warning(msg)
-            return
 
         # if extra data is found, give warning too
         if df_fcst["Time"].max() > end_time or df_fcst["Time"].min() < start_time:
@@ -283,7 +336,8 @@ def retrieve_fcsts_gcs(locations: dict, conf: dict, data_paths: dict):
             end_date = conf1["forecast_end_date"][i1]
 
             # get forecast configuration and cycle frequency
-            cycle_config = get_nwm_cycle_config(config)
+            # cycle_config = get_nwm_cycle_config(config)
+            cycle_config = ForecastConfig.get_cycle_info(config)
 
             logger.info(
                 f"  ======== Fetch data for NWM dataset {dataset}: {version} {config} {start_date} to {end_date} =========="
@@ -295,13 +349,16 @@ def retrieve_fcsts_gcs(locations: dict, conf: dict, data_paths: dict):
             cycles0 = [pd.Timestamp(h1) for h1 in hours]
 
             # determine all cycles needed
-            cycles = create_hour_sequence(
-                start_date,
-                end_date,
-                cycle_config["start_hr"],
-                cycle_config["end_hr"],
-                cycle_config["freq_hr"],
-            )
+            cycles = []
+            for c1 in cycle_config:
+                cycle_start, cycle_end, cycle_freq, fcst_win, fcst_timestep = c1
+                cycles.extend(
+                    create_time_sequence(
+                        start_date,
+                        end_date,
+                        cycle_freq,
+                    )
+                )
 
             # cycles not in existing parquet files
             cycles1 = [c1 for c1 in cycles if c1 not in cycles0]
@@ -382,7 +439,7 @@ def retrieve_fcsts(locations: dict, conf: dict, data_paths: dict):
     if conf["nwm_forecast"]["data_source"].upper() in ["GCS", "NOMADS", "DSTOR"]:
         retrieve_fcsts_gcs(locations, conf, data_paths)
     elif conf["nwm_forecast"]["data_source"].upper() == "NGENCERF":
-        retrieve_fcsts_ngencerf(locations, conf, data_paths)
+        retrieve_fcsts_ngencerf(conf, data_paths)
     else:
         msg = (
             f"Data source {conf['nwm_forecast']['data_source']} not recognized. "

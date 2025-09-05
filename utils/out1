@@ -1,0 +1,22 @@
+nohup: ignoring input
+------------------  Running forecast configuration: short_range ------------------
+------------------  Running forecast configuration: short_range_hawaii ------------------
+------------------  Running forecast configuration: short_range_puertorico ------------------
+------------------  Running forecast configuration: medium_range_blend ------------------
+------------------  Running forecast configuration: medium_range_mem1 ------------------
+------------------  Running forecast configuration: medium_range_mem2 ------------------
+------------------  Running forecast configuration: medium_range_mem3 ------------------
+------------------  Running forecast configuration: medium_range_mem4 ------------------
+------------------  Running forecast configuration: medium_range_mem5 ------------------
+------------------  Running forecast configuration: medium_range_mem6 ------------------
+------------------  Running forecast configuration: medium_range_blend_alaska ------------------
+------------------  Running forecast configuration: medium_range_alaska_mem1 ------------------
+------------------  Running forecast configuration: medium_range_alaska_mem2 ------------------
+------------------  Running forecast configuration: medium_range_alaska_mem3 ------------------
+------------------  Running forecast configuration: medium_range_alaska_mem4 ------------------
+------------------  Running forecast configuration: medium_range_alaska_mem5 ------------------
+------------------  Running forecast configuration: medium_range_alaska_mem6 ------------------
+------------------  Running forecast configuration: long_range_mem1 ------------------
+------------------  Running forecast configuration: long_range_mem2 ------------------
+------------------  Running forecast configuration: long_range_mem3 ------------------
+------------------  Running forecast configuration: long_range_mem4 ------------------

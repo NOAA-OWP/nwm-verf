@@ -97,3 +97,6 @@ def setup_logging(
     # --- Suppress overly noisy third-party loggers ---
     logging.getLogger("google.auth.compute_engine._metadata").setLevel(logging.ERROR)
     logging.getLogger("fsspec.reference").setLevel(logging.WARNING)
+    logging.getLogger("distributed").setLevel(logging.WARNING)
+    logging.getLogger("dask").setLevel(logging.WARNING)
+    logging.getLogger("tornado.application").setLevel(logging.ERROR)

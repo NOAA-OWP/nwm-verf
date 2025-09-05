@@ -36,6 +36,7 @@ class FilePathsConfig(BaseModel):
     # gage_meta_file: str | Path
     # geometry_file: str | Path
     gage_hydrofabric_file: str | Path
+    fcst_config_file: str | Path
     fcst_data_file: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = Field()
     output_dir: str | Path
 
@@ -89,6 +90,7 @@ class MetricsConfig(BaseModel):
     flow_threshold_categorical: Optional[float] = 0.9
     flow_threshold_event: Optional[float] = 0.9
     lead_times: List[Union[str, int]]
+    file_format: Optional[str] = "parquet"
 
 
 Number = Union[int, float]

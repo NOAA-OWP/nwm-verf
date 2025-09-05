@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 __all__ = [
-    "create_hour_sequence",
+    "create_time_sequence",
     "get_key_from_value",
     "get_n_workers",
     "clean_data",
@@ -42,23 +42,17 @@ def clean_data(
     return df
 
 
-# create datetime sequence given start date, end date, and frequency
-def create_hour_sequence(
-    start_date: str,
-    end_date: str,
-    start_hour: int,
-    end_hour: int,
-    freq_hour: int,
-) -> list:
-    start_dt = pd.to_datetime(start_date).normalize() + timedelta(hours=start_hour)
-    end_dt = pd.to_datetime(end_date).normalize() + timedelta(hours=end_hour)
+def create_time_sequence(
+    start_date: str | pd.Timestamp,
+    end_date: str | pd.Timestamp,
+    freq_hour: float = 1,
+    start_hour: float = 0,
+    end_hour: float = 0,
+) -> list[pd.Timestamp]:
+    start_dt = pd.to_datetime(start_date) + pd.Timedelta(hours=start_hour)
+    end_dt = pd.to_datetime(end_date) + pd.Timedelta(hours=end_hour)
 
-    hours = []
-    while start_dt <= end_dt:
-        hours.append(start_dt)
-        start_dt += timedelta(hours=freq_hour)
-
-    return hours
+    return pd.date_range(start=start_dt, end=end_dt, freq=f"{freq_hour}H").to_list()
 
 
 # get key from dictionary given value
@@ -79,9 +73,9 @@ def get_n_workers(memory_per_worker_gb: int) -> int:
     # Safety check
     n_workers = max(n_workers, 1)
 
-    logger.info(
-        f"  Using {n_workers} workers, with ~{memory_per_worker_gb} GB per worker."
-    )
+    # logger.info(
+    #     f"  Using {n_workers} workers, with ~{memory_per_worker_gb} GB per worker."
+    # )
 
     return n_workers
 

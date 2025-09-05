@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from .nwm_configs import interpret_lead_times
+from .nwm_configs import ForecastConfig
 from .settings import (
     dict_nwm_eval_metrics,
     dict_teehr_metrics,
@@ -43,10 +43,13 @@ def get_metric_long_name(metrics: list, library: str):
 
 
 # filter metric dataframe by required lead times and metrics
-def filter_by_lead_metric(df_metrics: pd.DataFrame, conf: dict, nwm_config: str):
+def filter_by_lead_metric(
+    df_metrics: pd.DataFrame, conf: dict, nwm_config: str, fcst_config_file: str
+):
     # first filter by lead times
     # leads0 = [str(x) for x in conf["lead_times"]]
-    leads0, missing_leads = interpret_lead_times(conf["lead_times"], nwm_config)
+    fc = ForecastConfig(fcst_config_file)
+    leads0, missing_leads = fc.interpret_lead_times(conf["lead_times"], nwm_config)
     leads = df_metrics["lead_group"].unique()
     leads1 = [l1 for l1 in leads0 if l1 not in leads]
     if len(leads1) > 0:
@@ -76,7 +79,10 @@ def gather_all_metrics(datasets: list, data_paths: dict):
     df_metrics = pd.DataFrame()
     dfs = []
     for dataset in datasets:
-        df = pd.read_parquet(data_paths[dataset])
+        if data_paths[dataset].suffix.lower() == ".csv":
+            df = pd.read_csv(data_paths[dataset])
+        else:
+            df = pd.read_parquet(data_paths[dataset])
         df = df.melt(
             id_vars=["lead_group", "primary_location_id"],
             var_name="metric",
@@ -108,7 +114,10 @@ def create_spatial_maps(conf: dict, data_paths: dict):
     # filter metric dataframe by lead times and metrics
     conf1 = conf["plots"]["spatial_map"]
     df_metrics = filter_by_lead_metric(
-        df_metrics, conf1, conf["general"]["nwm_configuration"]
+        df_metrics,
+        conf1,
+        conf["general"]["nwm_configuration"],
+        conf["file_paths"]["fcst_config_file"],
     )
     leads = df_metrics["lead_group"].unique()
 
@@ -222,7 +231,10 @@ def create_boxplots(conf: dict, data_paths: dict):
     # filter metric dataframe by lead times and metrics
     conf1 = conf["plots"]["boxplot"]
     df_metrics = filter_by_lead_metric(
-        df_metrics, conf1, conf["general"]["nwm_configuration"]
+        df_metrics,
+        conf1,
+        conf["general"]["nwm_configuration"],
+        conf["file_paths"]["fcst_config_file"],
     )
 
     # get metric long names
@@ -305,7 +317,10 @@ def create_histograms(conf: dict, data_paths: dict):
     # filter metric dataframe by lead times and metrics
     conf1 = conf["plots"]["histogram"]
     df_metrics = filter_by_lead_metric(
-        df_metrics, conf1, conf["general"]["nwm_configuration"]
+        df_metrics,
+        conf1,
+        conf["general"]["nwm_configuration"],
+        conf["file_paths"]["fcst_config_file"],
     )
     leads = df_metrics["lead_group"].unique()
 

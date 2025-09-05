@@ -60,12 +60,14 @@ def export_location_groups_with_lead_time(
     # Split the list into n groups and process each group separately
     for i in range(n_groups):
         group_ids = location_ids[i * group_size : (i + 1) * group_size]
-        group_file = output_path.with_name(output_path.stem + f".group{i}.parquet")
+
         if n_groups > 1:
+            group_file = output_path.with_name(output_path.stem + f".group{i}.parquet")
             logger.info(
                 f"  Exporting paired data for group {i} locations to {group_file} ..."
             )
         else:
+            group_file = output_path.with_name(output_path.stem + ".parquet")
             logger.info(f"  Exporting paired data to {group_file} ...")
 
         formatted_ids = ", ".join(f"'{loc}'" for loc in group_ids)
@@ -83,7 +85,7 @@ def export_location_groups_with_lead_time(
                     measurement_unit,
                     variable_name,
                     reference_time,
-                    DATEDIFF('hour', reference_time, value_time) AS lead_time
+                    (EXTRACT(EPOCH FROM value_time) - EXTRACT(EPOCH FROM reference_time)) / 3600.0 AS lead_time
                 FROM {table_name}
                 WHERE primary_location_id IN ({formatted_ids})
             )
