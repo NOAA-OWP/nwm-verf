@@ -63,6 +63,7 @@ class ProcessConfig(BaseModel):
             },
             "gage_hydrofabric_file": {"primary_location_id", "agency", "geometry"},
             "fcst_data_file": {"Time", "sim_flow"},
+            "location_list_file": {},
         }
         return file_dict
 
@@ -211,7 +212,14 @@ class ProcessConfig(BaseModel):
         self.substitute_placeholders()
 
         # validate file paths
-        paths = self.assemble_file_paths()
+        exclude_files = set()
+        if not self.config.nwm_forecast.data_source == "ngenCERF":
+            exclude_files.update(self.config.file_paths.fcst_data_file.values())
+        if not self.config.general.location_list:
+            exclude_files.update([self.config.file_paths.location_list_file])
+
+        print(f"exclude_files: {exclude_files}")
+        paths = self.assemble_file_paths(exclude=exclude_files)
         self.validate_paths(paths)
 
         # setup logger

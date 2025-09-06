@@ -10,7 +10,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from duckdb import df
 
+from .configuration import PlotsConfig
 from .nwm_configs import ForecastConfig
 from .settings import (
     dict_nwm_eval_metrics,
@@ -24,8 +26,8 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-# get long names for metrics
 def get_metric_long_name(metrics: list, library: str):
+    """Get long names for metrics."""
     if library == "teehr":
         dict1 = dict_teehr_metrics
     elif library == "nwm.eval":
@@ -43,12 +45,11 @@ def get_metric_long_name(metrics: list, library: str):
     return metrics_long
 
 
-# filter metric dataframe by required lead times and metrics
 def filter_by_lead_metric(
     df_metrics: pd.DataFrame, conf: dict, nwm_config: str, fcst_config_file: str
 ):
+    """Filter the metric DataFrame by lead times and metrics."""
     # first filter by lead times
-    # leads0 = [str(x) for x in conf["lead_times"]]
     fc = ForecastConfig(fcst_config_file)
     leads0, missing_leads = fc.interpret_lead_times(conf["lead_times"], nwm_config)
     leads = df_metrics["lead_group"].unique()
@@ -75,8 +76,8 @@ def filter_by_lead_metric(
     return df_metrics1
 
 
-# gather metrics calculated for all datasets
 def gather_all_metrics(datasets: list, data_paths: dict):
+    """Gather metrics from all datasets into a single DataFrame."""
     df_metrics = pd.DataFrame()
     dfs = []
     for dataset in datasets:
@@ -106,8 +107,46 @@ def gather_all_metrics(datasets: list, data_paths: dict):
     return df_metrics
 
 
-# create spatial maps for each dataset, metric and lead time
-def create_spatial_maps(conf: dict, data_paths: dict):
+def add_tag_to_filename(conf: dict, file_name: str) -> str:
+    """Add a tag to the filename if it exists in the config."""
+    path = Path(file_name)
+    tag = conf.get("tag")
+    if tag:
+        path = path.with_name(f"{path.stem}_{tag}{path.suffix}")
+    return path.as_posix()
+
+
+def save_plot(
+    plt: plt,
+    conf: dict,
+    data_paths: dict,
+    plt_type: str,
+    plt_name: str = None,
+    lead: str = None,
+    dataset: str = None,
+    metric: str = None,
+) -> Path:
+    """Save the plot to a file."""
+    fig_dir = Path(data_paths["plots"], plt_type)
+    fig_dir.mkdir(parents=True, exist_ok=True)
+
+    if not plt_name:
+        plt_name = plt_type
+    if plt_type in ["time_series", "barchart", "metric_table"]:
+        file1 = f"{plt_name}_{conf['general']['location_list'][0]}.png"
+    else:
+        file1 = f"{plt_name}_{metric}_h{lead}_{dataset}.png"
+
+    file1 = add_tag_to_filename(conf["plots"][plt_type], file1)
+    fig_file = Path(fig_dir, file1)
+    plt.savefig(fig_file)
+    plt.close()
+
+    return fig_dir
+
+
+def create_spatial_map(conf: dict, data_paths: dict):
+    """Create spatial maps for each dataset, metric, and lead time."""
     # gather all metrics calcualted
     datasets = conf["general"]["dataset_name"]
     df_metrics = gather_all_metrics(datasets, data_paths["metrics"])
@@ -130,9 +169,6 @@ def create_spatial_maps(conf: dict, data_paths: dict):
     df_geo = gpd.read_parquet(data_paths["geofile"])
     df_geo = df_geo[["primary_location_id", "geometry"]]
     gdf_metrics = df_geo.merge(df_metrics, on="primary_location_id", how="inner")
-
-    fig_dir = Path(data_paths["plots"], "maps")
-    fig_dir.mkdir(parents=True, exist_ok=True)
 
     # loop through lead times, metrics, and datasets to create spatial maps
     cmap1 = get_metric_colormap(conf1, "map")
@@ -199,29 +235,23 @@ def create_spatial_maps(conf: dict, data_paths: dict):
                 plt.colorbar(sc, ax=ax, label="", orientation="horizontal", pad=0.02)
                 ax.set_aspect(1.35)
 
-                # export static plot to png
-                file1 = "map_" + metric1 + "_h" + str(lead1) + "_" + case1 + ".png"
-                if "tag" in conf1.keys() and conf1["tag"] is not None:
-                    file1 = (
-                        "map_"
-                        + metric1
-                        + "_h"
-                        + str(lead1)
-                        + "_"
-                        + case1
-                        + "_"
-                        + conf1["tag"]
-                        + ".png"
-                    )
-                fig_file = Path(fig_dir, file1)
-                plt.savefig(fig_file, dpi=300, bbox_inches="tight")
-                plt.close(fig)
+                # save plot to png
+                fig_dir = save_plot(
+                    plt,
+                    conf,
+                    data_paths,
+                    "spatial_map",
+                    "map",
+                    str(lead1),
+                    case1,
+                    metric1,
+                )
 
     logger.info(f"  Spatial maps created at: {fig_dir}")
 
 
-# create boxplot for each metric
-def create_boxplots(conf: dict, data_paths: dict):
+def create_boxplot(conf: dict, data_paths: dict):
+    """Create boxplots for each metric in the configuration."""
     # gather all metrics calcualted
     datasets = conf["general"]["dataset_name"]
     df_metrics = gather_all_metrics(datasets, data_paths["metrics"])
@@ -296,19 +326,20 @@ def create_boxplots(conf: dict, data_paths: dict):
         plt.ylabel("")
 
         # save plot to png
-        fig_dir = Path(data_paths["plots"], "boxplots")
-        fig_dir.mkdir(parents=True, exist_ok=True)
-        file1 = "boxplot_" + metric1 + ".png"
-        if "tag" in conf1.keys() and conf1["tag"] is not None:
-            file1 = "boxplot_" + metric1 + "_" + conf1["tag"] + ".png"
-        fig_file = Path(fig_dir, file1)
-        plt.savefig(fig_file)
+        fig_dir = save_plot(
+            plt,
+            conf,
+            data_paths,
+            "boxplot",
+            metric=metric1,
+        )
 
     logger.info(f"  Boxplots created at: {fig_dir}")
 
 
-def create_histograms(conf: dict, data_paths: dict):
-    # gather all metrics calcualted
+def create_histogram(conf: dict, data_paths: dict):
+    """Create histograms for each metric in the configuration."""
+    # gather all metrics calculated
     datasets = conf["general"]["dataset_name"]
     df_metrics = gather_all_metrics(datasets, data_paths["metrics"])
 
@@ -381,20 +412,21 @@ def create_histograms(conf: dict, data_paths: dict):
             plt.subplots_adjust(bottom=0.2)
 
             # save plot to png
-            fig_dir = Path(data_paths["plots"], "histograms")
-            fig_dir.mkdir(parents=True, exist_ok=True)
-            file1 = "hist_" + metric1 + "_h" + str(lead1) + ".png"
-            if "tag" in conf1.keys() and conf1["tag"] is not None:
-                file1 = (
-                    "hist_" + metric1 + "_h" + str(lead1) + "_" + conf1["tag"] + ".png"
-                )
-            fig_file = Path(fig_dir, file1)
-            plt.savefig(fig_file)
+            fig_dir = save_plot(
+                plt,
+                conf,
+                data_paths,
+                "histogram",
+                "hist",
+                lead=str(lead1),
+                metric=metric1,
+            )
 
     logger.info(f"  Histograms created at: {fig_dir}")
 
 
-def create_timeseries_plot(conf: dict, data_paths: dict):
+def create_time_series(conf: dict, data_paths: dict):
+    """Create a time series plot for each dataset in the configuration."""
     # Load all files and merge on "value_time"
     merged_df = None
     for dataset in conf["general"]["dataset_name"]:
@@ -457,25 +489,198 @@ def create_timeseries_plot(conf: dict, data_paths: dict):
     fig.autofmt_xdate()
 
     # save plot to png
-    fig_dir = Path(data_paths["plots"], "timeseries")
-    fig_dir.mkdir(parents=True, exist_ok=True)
-    file1 = "ts_" + conf["general"]["location_list"][0] + ".png"
-    conf1 = conf["plots"]["time_series"]
-    if "tag" in conf1.keys() and conf1["tag"] is not None:
-        file1 = (
-            "ts_" + conf["general"]["location_list"][0] + "_" + conf1["tag"] + ".png"
+    fig_dir = save_plot(
+        plt,
+        conf,
+        data_paths,
+        "time_series",
+    )
+
+    logger.info(f"  Time series plots created at: {fig_dir}")
+
+
+def get_metric_groups() -> dict:
+    """Get metric groups for the configuration."""
+    # Split metric columns into groups
+    metric_groups = {
+        "Standard": [
+            "CORR",
+            "KGE",
+            "NNSE",
+            "NSE",
+            "NSElog",
+            "NSEwt",
+            "RSR",
+            "RMSE",
+            "MAE",
+            "PBIAS",
+        ],
+        "Categorical": ["POD", "FAR", "CSI", "FBIAS"],
+        "Event-based": ["PKBIAS", "PKTE", "EVBIAS"],
+        "FDC-based": ["HSEG_FDC", "MSEG_FDC", "LSEG_FDC"],
+    }
+    return metric_groups
+
+
+def create_metric_table(conf: dict, data_paths: dict):
+    """Create a metric table based on the configuration."""
+    # gather all metrics calcualted
+    datasets = conf["general"]["dataset_name"]
+    df_metrics = gather_all_metrics(datasets, data_paths["metrics"])
+
+    # convert long format to wide format
+    df_metrics = df_metrics[["dataset", "metric", "value"]].drop_duplicates()
+    df_metrics.rename(columns={"dataset": "Formulation"}, inplace=True)
+    df_metrics = df_metrics.pivot(
+        index="Formulation", columns="metric", values="value"
+    ).reset_index()
+
+    metric_groups = get_metric_groups()
+    n_groups = len(metric_groups)
+
+    # Create subplots for each table
+    fig, axes = plt.subplots(n_groups, 1, figsize=(9, 1.2 * n_groups))
+
+    if n_groups == 1:  # if only one group, axes is not iterable
+        axes = [axes]
+
+    for ax, group in zip(axes, metric_groups.keys()):
+        ax.axis("off")  # hide axis
+
+        # Round values to 2 digits
+        cols = ["Formulation"] + metric_groups[group]
+        cols = [c1 for c1 in cols if c1 in df_metrics.columns]
+        cell_values = df_metrics[cols].round(2).values
+
+        table = ax.table(
+            cellText=cell_values,
+            colLabels=cols,
+            cellLoc="center",
+            loc="center",
         )
-    fig_file = Path(fig_dir, file1)
-    plt.savefig(fig_file)
+
+        # automatically adjust the column widths
+        table.auto_set_column_width(col=list(range(len(df_metrics.columns))))
+
+        # Header styling
+        for (i, j), cell in table.get_celld().items():
+            if i == 0:  # first row = header
+                cell.set_facecolor("teal")
+                cell.set_text_props(weight="bold", color="white")
+
+        table.auto_set_font_size(False)
+        table.set_fontsize(11)
+        table.scale(1.2, 2.0)
+
+        # Add title above the table
+        ax.set_title(
+            f"{group} Metrics", fontsize=14, pad=8, weight="bold", color="dimgrey"
+        )
+
+    # Overall title
+    conf1 = conf["general"]
+    title = f"Metrics for {conf1['location_list'][0]} {conf1['nwm_configuration']} "
+    title += f"(T0 = {conf1['forecast_start_date'][0]})"
+    fig.suptitle(title, fontsize=14, fontweight="bold", y=0.98)
+    plt.tight_layout()
+
+    # save plot to png
+    fig_dir = save_plot(
+        plt,
+        conf,
+        data_paths,
+        "metric_table",
+    )
+
+    logger.info(f"  Metric table plots created at: {fig_dir}")
+
+
+def create_barchart(conf: dict, data_paths: dict):
+    """Create a bar chart comparing datasets for each metric."""
+    # gather all metrics calculated
+    datasets = conf["general"]["dataset_name"]
+    df_metrics = gather_all_metrics(datasets, data_paths["metrics"])
+
+    # Get unique datasets and assign colors
+    datasets = df_metrics["dataset"].unique()
+    n_datasets = len(datasets)
+    colors = plt.cm.tab10.colors  # categorical colormap
+    color_map = {d: colors[i % len(colors)] for i, d in enumerate(datasets)}
+
+    # Create subplots
+    metrics = df_metrics["metric"].unique()
+    n_metrics = len(metrics)
+    ncols = 5
+    nrows = -(-n_metrics // ncols)  # ceiling division
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(12, 8), squeeze=False)
+
+    # bar width
+    bar_width = 0.25  # fraction of total group width
+    group_center = 0  # center of the single group
+
+    # x positions for each bar in the group, centered at 0
+    x_positions = np.linspace(
+        group_center - bar_width * (n_datasets - 1) / 2,
+        group_center + bar_width * (n_datasets - 1) / 2,
+        n_datasets,
+    )
+
+    # Plot each metric
+    for ax, metric in zip(axes.ravel(), metrics):
+        values = df_metrics[df_metrics["metric"] == metric]["value"].values
+
+        for xi, val, f in zip(x_positions, values, datasets):
+            ax.bar(xi, val, width=bar_width, color=color_map[f])
+
+        ax.set_title(metric, fontsize=14)
+        ax.set_xticks([])  # no x-tick labels
+        ax.set_xlabel("")
+        ax.tick_params(axis="y", labelsize=14)
+        ax.set_xlim(-0.5, 0.5)  # expand x-axis limits so bars don’t stretch
+
+    # Remove unused subplots
+    for j in range(len(metrics), len(axes.ravel())):
+        fig.delaxes(axes.ravel()[j])
+
+    # Add overall legend above subplots
+    handles = [plt.Rectangle((0, 0), 1, 1, color=color_map[f]) for f in datasets]
+    fig.legend(
+        handles,
+        datasets,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.95),
+        ncol=len(datasets),
+        fontsize=16,
+        frameon=False,  # no legend box
+    )
+
+    # Add overall title
+    conf1 = conf["general"]
+    title = (
+        f"Metrics for {conf1['location_list'][0]} {conf1['nwm_configuration']} "
+        f"(T0 = {conf1['forecast_start_date'][0]})"
+    )
+    fig.suptitle(title, fontsize=20)
+    plt.tight_layout(rect=[0, 0, 1, 0.92])  # leave space for legend and suptitle
+
+    # save plot to png
+    fig_dir = save_plot(
+        plt,
+        conf,
+        data_paths,
+        "barchart",
+    )
+
+    logger.info(f"  Barchart plots created at: {fig_dir}")
 
 
 def create_all_plots(conf: dict, data_paths: dict):
     """Create all plots based on the configuration."""
+    plot_types = list(PlotsConfig.model_fields.keys())
     plot_functions = {
-        "spatial_map": create_spatial_maps,
-        "histogram": create_histograms,
-        "boxplot": create_boxplots,
-        "time_series": create_timeseries_plot,
+        pt: globals()[f"create_{pt}"]
+        for pt in plot_types
+        if f"create_{pt}" in globals()
     }
 
     for plot_type, func in plot_functions.items():

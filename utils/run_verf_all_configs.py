@@ -32,6 +32,7 @@ for fcst_name in forecast_configs.keys():
     # Replace nwm_configuration
     config.general.nwm_configuration = fcst_name
 
+    # replace fcst_data_file (for hawaii)
     f1 = Path(config.file_paths.fcst_data_file)
 
     if isinstance(forecast_configs[fcst_name][0], list):

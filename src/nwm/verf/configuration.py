@@ -99,9 +99,9 @@ Number = Union[int, float]
 class BasePlotConfig(BaseModel):
     """Common fields for all plot configs"""
 
-    plot: bool
-    metric_subset: List[str]
-    lead_times: List[Union[int, str]]
+    plot: Optional[bool] = False
+    metric_subset: Optional[List[str]] = []
+    lead_times: Optional[List[Union[int, str]]] = []
     tag: Optional[str] = None
 
 
@@ -123,11 +123,22 @@ class SpatialMapConfig(BasePlotConfig):
     scaling: Optional[Dict[str, List[Number]]] = None
 
 
-class TimeSeriesConfig(BaseModel):
+class TimeSeriesConfig(BasePlotConfig):
     """Config for time series plots"""
 
-    plot: Optional[bool] = False
-    tag: Optional[str] = None
+    pass
+
+
+class TablePlotConfig(BasePlotConfig):
+    """Config for table plots displaying metric values"""
+
+    pass
+
+
+class BarChartConfig(BasePlotConfig):
+    """Config for bar charts"""
+
+    pass
 
 
 class PlotsConfig(BaseModel):
@@ -137,6 +148,8 @@ class PlotsConfig(BaseModel):
     boxplot: Optional[BoxPlotConfig] = None
     spatial_map: Optional[SpatialMapConfig] = None
     time_series: Optional[TimeSeriesConfig] = None
+    metric_table: Optional[TablePlotConfig] = None
+    barchart: Optional[BarChartConfig] = None
 
 
 class Config(BaseModel):
@@ -152,12 +165,25 @@ class Config(BaseModel):
 
     @model_validator(mode="after")
     def check_forecast_data_file(self):
+        """Make sure forecast data file is provided for ngenCERF."""
         if (
             self.nwm_forecast.data_source == "ngenCERF"
             and self.file_paths.fcst_data_file is None
         ):
-            raise ValueError(
-                "file_paths.fcst_data_file must be provided when "
-                "nwm_forecast.data_source is 'ngenCERF'"
-            )
+            msg = "file_paths.fcst_data_file must be provided when "
+            msg += "nwm_forecast.data_source is 'ngenCERF'"
+            logger.error(msg)
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def check_plot_config(self):
+        """Time series and metric_table plots are only applicable if nwm_fcst/data_source is ngenCERF."""
+        for plot_type in ["time_series", "metric_table", "barchart"]:
+            plot_conf = getattr(self.plots, plot_type, None)
+            if plot_conf and getattr(plot_conf, "plot", False):
+                if self.nwm_forecast.data_source != "ngenCERF":
+                    msg = f"{plot_type} is only applicable if nwm_forecast.data_source is 'ngenCERF'"
+                    logger.error(msg)
+                    raise ValueError(msg)
         return self
