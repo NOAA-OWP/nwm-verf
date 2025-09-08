@@ -104,7 +104,7 @@ RUN set -eux; \
 	done
 
 
-ENV VIRTUAL_ENV=/ngen-app/ngen-verf-python
+ENV VIRTUAL_ENV=/ngen-app/nwm-verf-python
 RUN set -eux; \
         \
         python3.10 -m venv ${VIRTUAL_ENV}
@@ -116,14 +116,14 @@ RUN set -eux; \
     pip3 install "git+https://github.com/NGWPC/nwm-eval-mgr.git@${NWM_EVAL_MGR_TAG}" ; \
     pip3 cache purge
 
-COPY . /ngen-app/ngen-verf/
-WORKDIR /ngen-app/ngen-verf/
+COPY . /ngen-app/nwm-verf/
+WORKDIR /ngen-app/nwm-verf/
 RUN set -eux; \
 	\
     pip3 install . ; \
     pip3 cache purge
 
-COPY ./docker/run-ngen-verf.sh /ngen-app/bin/
+COPY ./docker/run-nwm-verf.sh /ngen-app/bin/
 RUN set -eux; \
 	\
     chmod +x /ngen-app/bin/run-nwm-verf.sh
