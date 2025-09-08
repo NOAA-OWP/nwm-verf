@@ -217,7 +217,7 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
     )
     if missed_leads:
         logger.warning(f"Missing lead times: {missed_leads}")
-    logger.info(f"Lead times to calculate metrics for: {lead_times}")
+    logger.debug(f"Lead times to calculate metrics for: {lead_times}")
 
     # removed repetitive lead times if any
     lead_times = sorted(list(set(lead_times)))

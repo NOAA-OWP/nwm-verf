@@ -32,12 +32,10 @@ class FilePathsConfig(BaseModel):
 
     base_dir: Path
     location_list_file: Optional[str] = None
-    crosswalk_file: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = Field()
-    # gage_meta_file: str | Path
-    # geometry_file: str | Path
+    crosswalk_file: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = None
     gage_hydrofabric_file: str | Path
     fcst_config_file: str | Path
-    fcst_data_file: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = Field()
+    fcst_data_file: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = None
     output_dir: str | Path
 
     @model_validator(mode="after")
@@ -52,15 +50,15 @@ class FilePathsConfig(BaseModel):
 class NWMForecastConfig(BaseModel):
     """Data model for the 'nwm_forecast' section of the config file"""
 
-    fetch_fcst: List[bool]
-    output_type: str
-    t_minus: Optional[List[int]] = None
     data_source: str
-    kerchunk_method: str
-    process_by_z_hour: bool
+    fetch_fcst: Optional[List[bool]] = None
+    output_type: Optional[str] = None
+    t_minus: Optional[List[int]] = None
+    kerchunk_method: Optional[str] = None
+    process_by_z_hour: Optional[bool] = None
     stepsize: Optional[int] = 100
-    ignore_missing_file: bool
-    overwrite_output: bool
+    ignore_missing_file: Optional[bool] = True
+    overwrite_output: Optional[bool] = False
     memory_per_worker_gb: Optional[int] = (
         3  # configurable memory (in GB) assigned to each worker
     )

@@ -375,7 +375,9 @@ def read_data(
 
     suffix = file_path.suffix.lower()
     if suffix == ".csv":
-        df = pd.read_csv(file_path, dtype=dtype, parse_dates=parse_dates)
+        df = pd.read_csv(
+            file_path, sep=None, engine="python", dtype=dtype, parse_dates=parse_dates
+        )
     elif suffix == ".parquet":
         df = pd.read_parquet(file_path)
     else:

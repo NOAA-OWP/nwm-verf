@@ -133,7 +133,7 @@ class ForecastConfig:
             missing_leads = [l1 for l1 in all_leads if l1 not in leads]
             existing_leads = [l1 for l1 in all_leads if l1 in leads]
 
-        lead_times = lead_times.copy()
+        lead_times = [str(l1) for l1 in lead_times]  # ensure all are strings
         if "all" in lead_times:
             lead_times = [str(i) for i in existing_leads] + [
                 x for x in lead_times if x != "all"

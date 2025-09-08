@@ -248,11 +248,17 @@ def data_paths(conf: dict) -> dict:
 
     # path for crosswalk file
     cwt_file = dict()
-    for ver1 in list(set(conf1["nwm_version"])):
-        if ver1 in conf2["crosswalk_file"].keys():
-            cwt_file[ver1] = Path(conf2["crosswalk_file"][ver1])
-        elif ver1 != "ngen":
-            raise Exception(f"crosswalk file not found for {ver1}")
+    if conf2.get("crosswalk_file"):
+        for ver1 in list(set(conf1["nwm_version"])):
+            if ver1 in conf2["crosswalk_file"]:
+                cwt_file[ver1] = Path(conf2["crosswalk_file"][ver1])
+            else:
+                msg = (
+                    f"crosswalk file not found for {ver1}; "
+                    f"please check if crosswalk_file is correctly defined in the config file"
+                )
+                logger.error(msg)
+                raise ValueError(msg)
 
     # path for geometry file
     geo_file = Path(conf2["gage_hydrofabric_file"]).resolve(strict=True)

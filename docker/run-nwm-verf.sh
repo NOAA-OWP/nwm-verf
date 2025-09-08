@@ -7,7 +7,7 @@ VALID_COMMANDS=("verification")
 # It is used by CerfServer directly when running in LOCAL mode.
 # It is used by the nwm-verf docker container when the server is running in DOCKER or PARALLEL_WORKS mode
 
-SCRIPT_TO_RUN=/ngen-app/nwm-verf/verification.py
+SCRIPT_TO_RUN="nwm.verf"
 
 # Set the umask so files and directories are created with 777 permissions
 umask 000
@@ -56,12 +56,6 @@ case "$SCRIPT_COMMAND" in
     ;;
 esac
 
-# Check if the selected script exists
-if [ ! -f "$SCRIPT_PATH" ]; then
-  echo "Error: Script not found at $SCRIPT_PATH"
-  exit 1
-fi
-
 # Check if the correct number of arguments are provided for the selected command
 if [ $# -lt $REQUIRED_ARGS ]; then
   echo "Error: Insufficient arguments. $SCRIPT_COMMAND requires $REQUIRED_ARGS arguments."
@@ -105,9 +99,9 @@ fi
 # Run the Python script, redirecting its output if an output file is provided
 echo "   Running $(basename "$SCRIPT_PATH") with input file: $CONFIG_FILE"
 if [ -z "$STDOUT_FILE" ]; then
-  python "${SCRIPT_PATH}" "${CONFIG_FILE}"
+  python -m "${SCRIPT_PATH}" "${CONFIG_FILE}"
 else
-  python "${SCRIPT_PATH}" "${CONFIG_FILE}" &> "${STDOUT_FILE}"
+  python -m "${SCRIPT_PATH}" "${CONFIG_FILE}" &> "${STDOUT_FILE}"
 fi
 
 python_exit_code=$?

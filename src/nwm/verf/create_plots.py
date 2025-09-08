@@ -135,7 +135,17 @@ def save_plot(
     if plt_type in ["time_series", "barchart", "metric_table"]:
         file1 = f"{plt_name}_{conf['general']['location_list'][0]}.png"
     else:
-        file1 = f"{plt_name}_{metric}_h{lead}_{dataset}.png"
+        if lead and dataset and metric:
+            file1 = f"{plt_name}_{metric}_h{lead}_{dataset}.png"  # spatial map
+        elif metric and not lead and not dataset:  # boxplot
+            file1 = f"{plt_name}_{metric}.png"
+        elif metric and lead:  # histogram
+            file1 = f"{plt_name}_{metric}_h{lead}.png"
+        else:
+            msg = f"Insufficient information to name the plot file: plt_type={plt_type}, plt_name={plt_name}, "
+            msg += f"lead={lead}, dataset={dataset}, metric={metric}"
+            logger.error(msg)
+            raise ValueError(msg)
 
     file1 = add_tag_to_filename(conf["plots"][plt_type], file1)
     fig_file = Path(fig_dir, file1)

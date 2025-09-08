@@ -336,8 +336,9 @@ def retrieve_fcsts_gcs(locations: dict, conf: dict, data_paths: dict):
             end_date = conf1["forecast_end_date"][i1]
 
             # get forecast configuration and cycle frequency
-            # cycle_config = get_nwm_cycle_config(config)
-            cycle_config = ForecastConfig.get_cycle_info(config)
+            fc = ForecastConfig(conf["file_paths"]["fcst_config_file"])
+            fc.validate_cycle_info(config)
+            cycle_config = fc.get_cycle_info(config)
 
             logger.info(
                 f"  ======== Fetch data for NWM dataset {dataset}: {version} {config} {start_date} to {end_date} =========="
