@@ -126,10 +126,10 @@ RUN set -eux; \
 COPY ./docker/run-ngen-verf.sh /ngen-app/bin/
 RUN set -eux; \
 	\
-    chmod +x /ngen-app/bin/run-ngen-verf.sh
+    chmod +x /ngen-app/bin/run-nwm-verf.sh
 
 WORKDIR /
 SHELL ["/bin/bash", "-c"]
 
-ENTRYPOINT [ "/ngen-app/bin/run-ngen-verf.sh" ]
+ENTRYPOINT [ "/ngen-app/bin/run-nwm-verf.sh" ]
 CMD [ "--help" ]
