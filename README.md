@@ -54,7 +54,7 @@ Follow the sample config file (nwm-verf/data/configs) to set up the configuratio
 - For verifying ngeCERF forecasts, use: config_ngencerf.yaml 
 - For verifying NWM v30 forecasts, use: config_nwm.yaml
 
-2) run the verification script
+2) run verification
 
 ```bash
 python -m nwm.verf config.yaml
