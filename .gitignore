@@ -1,5 +1,8 @@
-data/
-data
+data/outputs/
+data/outputs
+data/inputs/usgs_01123000/01123000.csv
+data/inputs/usgs_01123000/noah_sac
+data/inputs/usgs_01123000/noah_sac/
 venv/
 venv
 tbd

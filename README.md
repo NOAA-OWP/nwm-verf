@@ -48,14 +48,16 @@ where [NWM_EVAL_ROOT], [NWM_VERF_ROOT], [VENV_ROOT] refer to the directory to in
 
 ### Usage
 
-1) set up configuration yaml file (e.g., config.yaml)
+1) set up configuration yaml file
 
-Follow the sample config file (nwm-verf/sample_files/config.yaml) and the detailed comments therein to set up the configurations for your verification application as needed.
+Follow the sample config file (nwm-verf/data/configs) to set up the configurations for your verification application.
+- For verifyinf ngeCERF forecasts, use: config_ngencerf.yaml 
+- For verifying NWM v30 forecasts, use: config_nwm.yaml
 
-2) run the verification script
+1) run the verification script
 
 ```bash
-python [NWM_VERF_ROOT]/nwm-verf/verification.py config.yaml
+python -m nwm.verf config.yaml
 ```
 
 3) repeat the first two steps as many times as needed
