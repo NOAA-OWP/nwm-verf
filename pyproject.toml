@@ -4,3 +4,64 @@ requires = [
   "setuptools>=42",
   "wheel",
 ]
+
+[project]
+name = "nwm.verf"
+version = "1.0.0"
+description = "A python library to perform verification for NWM forecasts"
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Yuqiong Liu", email = "Yuqiong.Liu@ertcorp.com" }
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "License :: Free To Use But Restricted",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Hydrology",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "dask",
+    "geopandas",
+    "cartopy",
+    "matplotlib",
+    "pandas",
+    "seaborn",
+    "distributed",
+    "pydantic",
+    "numpy<2",
+    "fastparquet",
+    "tenacity",
+    "teehr @ git+https://github.com/RTIInternational/teehr@1204e014fd9e3b320d6ee5c8eea04efc524ce0a7",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = true
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[project.optional-dependencies]
+develop = [
+    "pytest",
+    "pytest-mock",
+]
+
+[project.urls]
+Homepage = "https://github.com/NGWPC/nwm-verf.git"
+
+[tool.ruff]
+line-length = 88  
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
