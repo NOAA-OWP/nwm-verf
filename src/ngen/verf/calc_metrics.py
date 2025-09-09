@@ -21,6 +21,9 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+# Suppress specific logging messages from the metric functions library
+logging.getLogger("ngen.eval.metric_functions").setLevel(logging.ERROR)
+
 
 def check_metrics(metrics: list, mapping: dict, mode: str = "ngen.eval"):
     """Validate a list of metric names against a known mapping (here a metrics library).
