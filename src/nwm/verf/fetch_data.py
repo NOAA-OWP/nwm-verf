@@ -276,8 +276,7 @@ def retrieve_fcsts_ngencerf(conf: dict, data_paths: dict):
         missing_times = all_times[~all_times.isin(df_fcst["Time"])]
         if not missing_times.empty:
             msg = f"Missing forecast data for time steps: {missing_times.min()} to {missing_times.max()}"
-            logger.error(msg)
-            raise ValueError(msg)
+            logger.warning(msg)
 
         # rename columns to match the format expected by teehr
         df_fcst = df_fcst.rename(columns={"sim_flow": "value", "Time": "value_time"})
