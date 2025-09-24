@@ -15,6 +15,7 @@ class GeneralConfig(BaseModel):
     """Data model for the 'general' section of the config file"""
 
     steps: Dict[str, bool]
+    domain: str
     location_set_name: str
     location_list: Optional[List[Union[str, int]]] = None
     location_type: Optional[str] = None
