@@ -13,12 +13,6 @@ from dask.distributed import (  # install with 'pip install dask[complete]'
     LocalCluster,
 )
 from teehr.loading.usgs.usgs import usgs_to_parquet
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
 from .nwm_configs import ForecastConfig
 from .utils import create_time_sequence, get_n_workers, read_data, save_data
@@ -152,7 +146,11 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
     for i1 in range(len(conf1["forecast_start_date"])):
         start_date = conf1["forecast_start_date"][i1]
         end_date = conf1["forecast_end_date"][i1]
-        fcst_win1, timestep1, reference_time = get_fcst_info(conf)
+        if conf1["nwm_configuration"] == "ngen_simulation":
+            fcst_win1 = 0
+            timestep1 = 1
+        else:
+            fcst_win1, timestep1, reference_time = get_fcst_info(conf)
         end_date = pd.Timestamp(end_date) + pd.Timedelta(fcst_win1 + 24, unit="hours")
         end_date = end_date.strftime("%Y-%m-%d %H:%M:%S")
         dates = dates + create_time_sequence(
@@ -166,7 +164,7 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
     dates1 = [d1 for d1 in dates if d1 not in dates0]
 
     if len(dates1) == 0:
-        logger.info(f"  USGS data for all required dates already exist")
+        logger.info("  USGS data for all required dates already exist")
     else:
         # create data path
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -435,6 +433,8 @@ def extract_flow_for_gages(
     nc_file: Path,
     crosswalk_file: Path,
     gage_file: Path,
+    start_time: pd.Timestamp = None,
+    end_time: pd.Timestamp = None,
     flow_var: str = "flow",
     feature_id_var: str = "feature_id",
     time_var: str = "time",
@@ -445,6 +445,8 @@ def extract_flow_for_gages(
         nc_file: Path to NetCDF file.
         crosswalk_file: Path to parquet crosswalk file with columns ['primary_location_id', 'secondary_location_id'].
         gage_file: Path to CSV file with gage IDs (primary_location_id) to include.
+        start_time: Start time for filtering (optional).
+        end_time: End time for filtering (optional).
         flow_var: Name of flow variable in NetCDF.
         feature_id_var: Name of feature_id variable in NetCDF.
         time_var: Name of time variable in NetCDF.
@@ -489,16 +491,23 @@ def extract_flow_for_gages(
     # Convert to DataFrame
     df = flow_data.to_dataframe().reset_index()
 
-    # Map feature_id to primary_location_id
-    # df["primary_location_id"] = df[feature_id_var].map(feature_to_gage)
+    # create location_id by adding 'ngen-' prefix to feature_id
+    df["location_id"] = "ngen-" + df[feature_id_var].astype(str)
 
     # Keep only relevant columns
-    df = df[[time_var, "secondary_location_id", flow_var]]
+    df = df[[time_var, "location_id", flow_var]]
+
+    # filter by time if specified
+    if start_time is not None:
+        df = df[df[time_var] >= start_time]
+    if end_time is not None:
+        df = df[df[time_var] <= end_time]
+
+    # rename columns into teehr format
     df.rename(
         columns={
             time_var: "value_time",
             flow_var: "value",
-            "secondary_location_id": "location_id",
         },
         inplace=True,
     )
@@ -511,19 +520,19 @@ def retrieve_ngen_simulation(conf: dict, data_paths: dict):
 
     Based on the data source specified in the configuration, the appropriate retrieval function is called.
     """
-    # extract flow simulation for gages
-    crosswalk_file = conf["file_paths"]["crosswalk_file"]
-    gage_file = conf["file_paths"]["location_list_file"]
-
     # read forecast data from file for each dataset
-    for dataset in conf["general"]["dataset_name"]:
+    for idx, (dataset, nwm_ver) in enumerate(
+        zip(conf["general"]["dataset_name"], conf["general"]["nwm_version"])
+    ):
         logger.info(f"  Retrieving forecast data for dataset {dataset} ...")
 
         fcst_file = conf["file_paths"]["fcst_data_file"][dataset]
         df_sim = extract_flow_for_gages(
             nc_file=Path(fcst_file),
-            crosswalk_file=Path(crosswalk_file),
-            gage_file=Path(gage_file),
+            crosswalk_file=Path(conf["file_paths"]["crosswalk_file"][nwm_ver]),
+            gage_file=Path(conf["file_paths"]["location_list_file"]),
+            start_time=pd.to_datetime(conf["general"]["eval_start_date"][idx]),
+            end_time=pd.to_datetime(conf["general"]["eval_end_date"][idx]),
             flow_var="flow",
             feature_id_var="feature_id",
             time_var="time",

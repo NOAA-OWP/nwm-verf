@@ -2,7 +2,6 @@
 
 import logging
 import os
-from datetime import timedelta
 from enum import Enum
 from itertools import product
 from pathlib import Path
@@ -374,10 +373,13 @@ def read_data(
         raise FileNotFoundError(f"{file_path} does not exist")
 
     suffix = file_path.suffix.lower()
-    if suffix == ".csv":
-        df = pd.read_csv(
-            file_path, sep=None, engine="python", dtype=dtype, parse_dates=parse_dates
-        )
+    if suffix in [".csv", ".tsv"]:
+        try:
+            # Try automatic separator detection
+            df = pd.read_csv(file_path, dtype=dtype, parse_dates=parse_dates)
+        except pd.errors.ParserError:
+            # Fallback to tab-delimited
+            df = pd.read_csv(file_path, sep="\t", dtype=dtype, parse_dates=parse_dates)
     elif suffix == ".parquet":
         df = pd.read_parquet(file_path)
     else:

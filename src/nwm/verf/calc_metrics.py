@@ -2,13 +2,12 @@ import gc
 import warnings
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
+import nwm.eval.metric_functions as mf
 import pandas as pd
 from teehr.classes.duckdb_joined_parquet import DuckDBJoinedParquet
-
-import nwm.eval.metric_functions as mf
 
 from .nwm_configs import ForecastConfig
 from .settings import dict_nwm_eval_metrics, dict_teehr_metrics
@@ -97,7 +96,8 @@ def func_calc_metrics(
 ) -> pd.DataFrame:
     if len(df) < 2:  # personr calculation requires data length of at least 2
         logger.warning(
-            f"Insufficient data for metric calculation, lead time: {lead_time}."
+            f"Insufficient data for metric calculation, lead time: {lead_time}, "
+            f"location: {df['primary_location_id'].unique()[0]} (data length: {len(df)})"
         )
         return pd.DataFrame()
     else:
@@ -192,24 +192,6 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
     leads0.sort()
     lead_step = leads0[0]
 
-    # # lead times to calculate metrics for (can be grouped lead times e.g., 1-3 hours)
-    # if "lead_times" in conf.keys() and conf["lead_times"] is not None:
-    #     lead_times = [str(x) for x in conf["lead_times"]]
-    # else:
-    #     lead_times = ["all"]
-
-    # # interpret 'all' as calculating all native lead times (leads0)
-    # nwm_config = conf["general"]["nwm_configuration"]
-    # if "all" in lead_times:
-    #     lead_times = interpret_lead_times("all", nwm_config) + [
-    #         x for x in lead_times if x != "all"
-    #     ]
-
-    # # interpret 'all_aggregated' as calculating a single aggregated lead time over all native lead times
-    # if "all_aggregated" in lead_times:
-    #     lead_times = interpret_lead_times("all_aggregated", nwm_config) + [
-    #         x for x in lead_times if x != "all_aggregated"
-    #     ]
     nwm_config = conf["general"]["nwm_configuration"]
     fc = ForecastConfig(conf["file_paths"]["fcst_config_file"])
     lead_times, missed_leads = fc.interpret_lead_times(
@@ -234,7 +216,10 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
         end = float(leads1[1])
         step = float(lead_step)
 
-        leads1 = list(np.arange(start, end + step, step))
+        if step == 0:  # for simulation, start and end are both 0
+            leads1 = [start]
+        else:
+            leads1 = list(np.arange(start, end + step, step))
 
         # get paired data for the current lead time
         df1 = df0[df0["lead_time"].isin(leads1)]

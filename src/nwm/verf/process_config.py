@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -15,7 +16,6 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
-# logging.basicConfig(level=logging.INFO)
 
 
 class ProcessConfig(BaseModel):
@@ -32,6 +32,9 @@ class ProcessConfig(BaseModel):
             "base_dir": self.config.file_paths.base_dir
             if hasattr(self.config.file_paths, "base_dir")
             else None,
+            "domain": self.config.general.domain
+            if hasattr(self.config.general, "domain")
+            else None,
             "location_set_name": self.config.general.location_set_name
             if hasattr(self.config.general, "location_set_name")
             else None,
@@ -43,6 +46,11 @@ class ProcessConfig(BaseModel):
             else None,
             "nwm_version": self.config.general.nwm_version
             if hasattr(self.config.general, "nwm_version")
+            else None,
+            "forecast_start_date": datetime.strptime(
+                self.config.general.forecast_start_date[0], "%Y-%m-%d %H:%M:%S"
+            ).strftime("%Y%m%d%H%M")
+            if hasattr(self.config.general, "forecast_start_date")
             else None,
         }
 

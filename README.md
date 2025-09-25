@@ -4,7 +4,8 @@
 NWM/NextGen Verification (nwm.verf)
 
 ## Description
-A python library for conducting verification for NWM/NextGen forecasts
+A python library for conducting verification for NWM/NextGen forecasts. It also supports evaluating NGEN simulations
+(e.g., for evaluating regionalization)
 
 ### Clone & Build nwm.verf
 
@@ -53,8 +54,9 @@ where [NWM_EVAL_ROOT], [NWM_VERF_ROOT], [VENV_ROOT] refer to the directory to in
 Follow the sample config file (nwm-verf/data/configs) to set up the configurations for your verification application.
 - For verifying ngeCERF forecasts, use: config_ngencerf.yaml 
 - For verifying NWM v30 forecasts, use: config_nwm.yaml
+- For evaluating NGEN simulations, use: config_ngensim.yaml
 
-2) run verification
+2) run verification/evaluation
 
 ```bash
 python -m nwm.verf config.yaml

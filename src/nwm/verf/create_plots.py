@@ -1,7 +1,6 @@
 import logging
 from functools import reduce
 from pathlib import Path
-from typing import List, Union
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
@@ -10,7 +9,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from duckdb import df
 
 from .configuration import PlotsConfig
 from .nwm_configs import ForecastConfig
@@ -52,6 +50,7 @@ def filter_by_lead_metric(
     # first filter by lead times
     fc = ForecastConfig(fcst_config_file)
     leads0, missing_leads = fc.interpret_lead_times(conf["lead_times"], nwm_config)
+
     leads = df_metrics["lead_group"].unique()
     leads1 = [l1 for l1 in leads0 if l1 not in leads]
     if len(leads1) > 0:
@@ -213,8 +212,11 @@ def create_spatial_map(conf: dict, data_paths: dict):
                 fig, ax = plt.subplots(
                     figsize=(8.5, 6), subplot_kw={"projection": ccrs.PlateCarree()}
                 )
+
                 ax.set_title(
-                    f"{metric1} ({metric_long}), lead_time={lead1}h, dataset={case1}"
+                    f"{metric1} ({metric_long}), "
+                    f"{'' if lead1 == '0' else f'lead_time={lead1}h, '}"
+                    f"dataset={case1}"
                 )
 
                 # Add map features
@@ -332,7 +334,10 @@ def create_boxplot(conf: dict, data_paths: dict):
                 palette=palette,
             )
         plt.title(f"{metric1}({metric_long})")
-        plt.xlabel("Lead time (hours)")
+        plt.xlabel("Lead time (hours)" if not (df1["lead_group"] == "0").all() else "")
+        # remove x-axis ticks if only lead time 0
+        if (df1["lead_group"] == "0").all():
+            plt.xticks([])
         plt.ylabel("")
 
         # save plot to png
@@ -415,8 +420,12 @@ def create_histogram(conf: dict, data_paths: dict):
                 shrink=0.8,
                 palette=palette,
             )
+
             plt.setp(ax.get_xticklabels(), rotation=30)
-            plt.title(f"{metric1}({metric_long})    lead_time={lead1}h")
+            plt.title(
+                f"{metric1}({metric_long})"
+                f"{'' if lead1 == '0' else f'   lead_time={lead1}h'}"
+            )
             plt.xlabel("")
             plt.ylabel("Count")
             plt.subplots_adjust(bottom=0.2)

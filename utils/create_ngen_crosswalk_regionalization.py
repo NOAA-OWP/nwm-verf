@@ -1,4 +1,4 @@
-"""Retrieve VPU gpkg from conus.gpkg file"""
+"""Create NGEN crosswalk for all gages for regionalization evaluation."""
 
 import argparse
 from pathlib import Path

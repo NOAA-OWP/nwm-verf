@@ -2,8 +2,6 @@ import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-
 
 # bins for each metric for creating the histograms (in create_plots.py)
 metric_value_bins_default = {
