@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import List, Optional
 
 import pandas as pd
 
@@ -163,11 +163,13 @@ def get_gage_id_from_file(
     f1 = Path(id_file).absolute()
     if not f1.exists():
         raise FileNotFoundError(f1)
-    df = read_data(f1)
+    df = read_data(f1, dtype={"gage": str, "primary_location_id": str})
     df.columns = [x.lower() for x in df.columns]
     locations = []
     if "primary_location_id" in df.columns:
         locations = df["primary_location_id"].tolist()
+    elif "gage" in df.columns:
+        locations = df["gage"].tolist()
     else:
         # check for link columns
         cols = [c1 for c1 in df.columns if "link" in c1]
@@ -209,7 +211,6 @@ def get_usgs_gage_ids(conf: dict) -> list:
 
     # only accept usgs locations for now
     df = read_data(hydro_file)
-    # gages = [x for x in locations if df[df['gage']==x]['agency'].iloc[0] == 'USGS']
     locations = ["usgs-" + x for x in locations]
     gages = [
         x

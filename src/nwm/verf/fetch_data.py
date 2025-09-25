@@ -2,23 +2,17 @@ import gc
 import glob
 import os
 import warnings
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 import teehr.loading.nwm.nwm_points as tlp
+import xarray as xr
 from aiohttp.client_exceptions import ClientOSError, ServerDisconnectedError
 from dask.distributed import (  # install with 'pip install dask[complete]'
     Client,
     LocalCluster,
 )
 from teehr.loading.usgs.usgs import usgs_to_parquet
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
 from .nwm_configs import ForecastConfig
 from .utils import create_time_sequence, get_n_workers, read_data, save_data
@@ -152,7 +146,11 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
     for i1 in range(len(conf1["forecast_start_date"])):
         start_date = conf1["forecast_start_date"][i1]
         end_date = conf1["forecast_end_date"][i1]
-        fcst_win1, timestep1, reference_time = get_fcst_info(conf)
+        if conf1["nwm_configuration"] == "ngen_simulation":
+            fcst_win1 = 0
+            timestep1 = 1
+        else:
+            fcst_win1, timestep1, reference_time = get_fcst_info(conf)
         end_date = pd.Timestamp(end_date) + pd.Timedelta(fcst_win1 + 24, unit="hours")
         end_date = end_date.strftime("%Y-%m-%d %H:%M:%S")
         dates = dates + create_time_sequence(
@@ -166,7 +164,7 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
     dates1 = [d1 for d1 in dates if d1 not in dates0]
 
     if len(dates1) == 0:
-        logger.info(f"  USGS data for all required dates already exist")
+        logger.info("  USGS data for all required dates already exist")
     else:
         # create data path
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -431,6 +429,133 @@ def retrieve_fcsts_gcs(locations: dict, conf: dict, data_paths: dict):
                 link1.symlink_to(target1)
 
 
+def extract_flow_for_gages(
+    nc_file: Path,
+    crosswalk_file: Path,
+    gage_file: Path,
+    start_time: pd.Timestamp = None,
+    end_time: pd.Timestamp = None,
+    flow_var: str = "flow",
+    feature_id_var: str = "feature_id",
+    time_var: str = "time",
+) -> pd.DataFrame:
+    """Extract time and flow for specific gages from a NetCDF file using a crosswalk.
+
+    Args:
+        nc_file: Path to NetCDF file.
+        crosswalk_file: Path to parquet crosswalk file with columns ['primary_location_id', 'secondary_location_id'].
+        gage_file: Path to CSV file with gage IDs (primary_location_id) to include.
+        start_time: Start time for filtering (optional).
+        end_time: End time for filtering (optional).
+        flow_var: Name of flow variable in NetCDF.
+        feature_id_var: Name of feature_id variable in NetCDF.
+        time_var: Name of time variable in NetCDF.
+
+    Returns:
+        pd.DataFrame with columns ['time', 'primary_location_id', 'flow'].
+
+    """
+    # Read crosswalk
+    cwt_df = pd.read_parquet(crosswalk_file)
+
+    # Read list of gages to include
+    gages_df = pd.read_csv(gage_file, dtype=str, header=0, names=["gage"])
+    gage_list = set(gages_df["gage"])
+
+    # Filter crosswalk to only gages in the gage list
+    cwt_df["primary_location_id"] = cwt_df["primary_location_id"].str.replace(
+        "^usgs-", "", regex=True
+    )
+    cwt_df["secondary_location_id"] = cwt_df["secondary_location_id"].str.replace(
+        "^ngen-", "", regex=True
+    )
+    cwt_df = cwt_df[cwt_df["primary_location_id"].isin(gage_list)]
+
+    # convert secondary_location_id to integer (feature_id in NetCDF is integer)
+    cwt_df["secondary_location_id"] = cwt_df["secondary_location_id"].astype(int)
+
+    # Map secondary_location_id to primary_location_id
+    feature_to_gage = dict(
+        zip(cwt_df["secondary_location_id"], cwt_df["primary_location_id"])
+    )
+
+    # Open NetCDF
+    ds = xr.open_dataset(nc_file)
+
+    # Select only the feature_ids in the crosswalk
+    feature_ids = list(feature_to_gage.keys())
+
+    # Flow is [time, feature_id]
+    flow_data = ds[flow_var].sel({feature_id_var: feature_ids})
+
+    # Convert to DataFrame
+    df = flow_data.to_dataframe().reset_index()
+
+    # create location_id by adding 'ngen-' prefix to feature_id
+    df["location_id"] = "ngen-" + df[feature_id_var].astype(str)
+
+    # Keep only relevant columns
+    df = df[[time_var, "location_id", flow_var]]
+
+    # filter by time if specified
+    if start_time is not None:
+        df = df[df[time_var] >= start_time]
+    if end_time is not None:
+        df = df[df[time_var] <= end_time]
+
+    # rename columns into teehr format
+    df.rename(
+        columns={
+            time_var: "value_time",
+            flow_var: "value",
+        },
+        inplace=True,
+    )
+
+    return df
+
+
+def retrieve_ngen_simulation(conf: dict, data_paths: dict):
+    """Retrieve NGEN simulation data for the specified configuration.
+
+    Based on the data source specified in the configuration, the appropriate retrieval function is called.
+    """
+    # read forecast data from file for each dataset
+    for idx, (dataset, nwm_ver) in enumerate(
+        zip(conf["general"]["dataset_name"], conf["general"]["nwm_version"])
+    ):
+        logger.info(f"  Retrieving forecast data for dataset {dataset} ...")
+
+        fcst_file = conf["file_paths"]["fcst_data_file"][dataset]
+        df_sim = extract_flow_for_gages(
+            nc_file=Path(fcst_file),
+            crosswalk_file=Path(conf["file_paths"]["crosswalk_file"][nwm_ver]),
+            gage_file=Path(conf["file_paths"]["location_list_file"]),
+            start_time=pd.to_datetime(conf["general"]["eval_start_date"][idx]),
+            end_time=pd.to_datetime(conf["general"]["eval_end_date"][idx]),
+            flow_var="flow",
+            feature_id_var="feature_id",
+            time_var="time",
+        )
+
+        # add additional columns to match the format expected by teehr
+        df_sim["reference_time"] = df_sim["value_time"]
+        df_sim["configuration"] = conf["general"]["nwm_configuration"]
+        df_sim["variable_name"] = conf["general"]["variable_name"]
+        df_sim["measurement_unit"] = "m3/s"
+
+        # save forecast data to parquet files
+        start_time = df_sim["value_time"].min()
+        end_time = df_sim["value_time"].max()
+        output_file = Path(
+            data_paths.get("fcst_link").get(dataset)
+        ) / start_time.strftime(
+            "%Y%m%dT%H" + "-" + end_time.strftime("%Y%m%dT%H") + ".parquet"
+        )
+        save_data(df_sim, output_file)
+        logger.info(f"  NGEN simulation data saved to {output_file}")
+
+
 def retrieve_fcsts(locations: dict, conf: dict, data_paths: dict):
     """Retrieve NWM forecast data for the specified locations and configuration.
 
@@ -440,10 +565,12 @@ def retrieve_fcsts(locations: dict, conf: dict, data_paths: dict):
         retrieve_fcsts_gcs(locations, conf, data_paths)
     elif conf["nwm_forecast"]["data_source"].upper() == "NGENCERF":
         retrieve_fcsts_ngencerf(conf, data_paths)
+    elif conf["nwm_forecast"]["data_source"].upper() == "NGENSIM":
+        retrieve_ngen_simulation(conf, data_paths)
     else:
         msg = (
             f"Data source {conf['nwm_forecast']['data_source']} not recognized. "
-            f"Supported data sources are 'GCS', 'NOMADS', 'DSTOR', and 'NGENCERF'."
+            f"Supported data sources are 'GCS', 'NOMADS', 'DSTOR', 'NGENCERF', and 'NGENSIM'."
         )
         logger.error(msg)
         raise ValueError(msg)
