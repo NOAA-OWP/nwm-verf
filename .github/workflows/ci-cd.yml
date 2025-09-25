@@ -190,13 +190,10 @@ jobs:
           # RELEASE_TAG="${{ github.event.release.tag_name }}"
           RELEASE_TAG="test" # testing
 
-          # sanity: source must exist server-side (no pull)
-          docker buildx imagetools inspect "${IMAGE_BASE}:${SHORT_SHA}" > /dev/null
+          sudo apt-get update -y
+          sudo apt-get install -y skopeo
 
-          # retag the remote manifest to the release tag (no image download)
-          DOCKER_BUILDKIT=1 docker buildx imagetools create \
-            --tag "${IMAGE_BASE}:${RELEASE_TAG}" \
-            "${IMAGE_BASE}:${SHORT_SHA}"
-
-          # optional: show resulting manifest (kept lightweight)
-          docker buildx imagetools inspect "${IMAGE_BASE}:${RELEASE_TAG}"
+          skopeo copy \
+            --src-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+            --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+            docker://"${IMAGE_BASE}:${SHORT_SHA}" docker://${IMAGE_BASE}:${RELEASE_TAG}
