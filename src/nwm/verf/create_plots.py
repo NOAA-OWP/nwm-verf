@@ -80,10 +80,15 @@ def gather_all_metrics(datasets: list, data_paths: dict):
     df_metrics = pd.DataFrame()
     dfs = []
     for dataset in datasets:
-        if data_paths[dataset].suffix.lower() == ".csv":
-            df = pd.read_csv(data_paths[dataset])
+        metric_file = data_paths[dataset]
+        if not metric_file.exists():
+            msg = f"Metric file for dataset {dataset} does not exist at {metric_file}; compute metrics first."
+            logger.error(msg)
+            raise FileNotFoundError(msg)
+        if metric_file.suffix.lower() == ".csv":
+            df = pd.read_csv(metric_file)
         else:
-            df = pd.read_parquet(data_paths[dataset])
+            df = pd.read_parquet(metric_file)
         df = df.melt(
             id_vars=["lead_group", "primary_location_id"],
             var_name="metric",

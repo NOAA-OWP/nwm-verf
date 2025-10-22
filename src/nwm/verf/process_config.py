@@ -223,7 +223,7 @@ class ProcessConfig(BaseModel):
         exclude_files = set()
         if not self.config.nwm_forecast.data_source == "ngenCERF":
             exclude_files.add("fcst_data_file")
-        if self.config.general.location_list:
+        if self.config.general.location_list or self.config.general.assemble_domain:
             exclude_files.add("location_list_file")
 
         paths = self.assemble_file_paths(exclude=exclude_files)

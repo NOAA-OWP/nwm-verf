@@ -13,6 +13,7 @@ class GeneralConfig(BaseModel):
 
     steps: Dict[str, bool]
     domain: Optional[str] = None
+    assemble_domain: Optional[bool] = False
     location_set_name: str
     location_list: Optional[List[Union[str, int]]] = None
     location_type: Optional[str] = None
