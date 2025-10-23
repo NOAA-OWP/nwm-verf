@@ -293,7 +293,9 @@ def calc_metrics(conf: dict, data_paths: dict):
 
                 # df_metrics = calc_metrics_group(conf, pair_file, data_paths["geofile"])
                 df_metrics = calc_metrics_group(
-                    conf, pair_file, data_paths["crosswalk"]
+                    conf,
+                    pair_file,
+                    data_paths["crosswalk"][list(data_paths["crosswalk"].keys())[0]],
                 )
 
                 # write metrics to file
