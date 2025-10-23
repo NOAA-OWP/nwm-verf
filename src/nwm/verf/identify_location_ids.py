@@ -127,7 +127,6 @@ def get_locations_from_config_list(
 # get nwm link ids for the locations for retrieveing the forecasts
 def get_nwm_link_ids(conf: dict, nwm_ver: str) -> list:
     location_list = conf["general"]["location_list"]
-    # location_type = conf["general"]["location_type"]
     location_list_file = conf["file_paths"]["location_list_file"]
     crosswalk_file = conf["file_paths"]["crosswalk_file"]
 
@@ -196,7 +195,6 @@ def get_usgs_gage_ids(conf: dict) -> list:
     location_list = conf["general"]["location_list"]
     location_list_file = conf["file_paths"]["location_list_file"]
     crosswalk_file = conf["file_paths"]["crosswalk_file"]
-    hydro_file = conf["file_paths"]["gage_hydrofabric_file"]
 
     locations = []
     if location_list is not None:
@@ -210,18 +208,15 @@ def get_usgs_gage_ids(conf: dict) -> list:
         )
 
     # only accept usgs locations for now
-    df = read_data(hydro_file)
+    df = read_data(crosswalk_file[list(crosswalk_file.keys())[0]])
     locations = ["usgs-" + x for x in locations]
-    gages = [
-        x
-        for x in locations
-        if not df[df["primary_location_id"] == x].empty
-        and df[df["primary_location_id"] == x]["agency"].iloc[0].upper() == "USGS"
-    ]
+    gages = [x for x in locations if x in df["primary_location_id"].values]
 
     missed = [x for x in locations if x not in gages]
     if len(missed) > 0:
-        logger.info(f"  The following non-usgs locations will be dropped {missed}")
+        logger.info(
+            f"  The following locations are not found in the crosswalk file: {missed}"
+        )
 
     gages = [x.replace("usgs-", "") for x in gages]
 

@@ -23,7 +23,7 @@ general:
 file_paths:
   base_dir: ~/repos/nwm-verf/data/ # root directory to store data/outputs for verification
   location_list_file: '{base_dir}/inputs/regionalization/gage_list_conus_{location_set_name}.csv' # text file containing list of usgs gage IDs (one gage ID per line)
-  gage_hydrofabric_file: '{base_dir}/inputs/gage_files/gage_hydrofabric_all_domains.parquet' # gage hydrofabric file (including geometry)
+  #gage_hydrofabric_file: '{base_dir}/inputs/gage_files/gage_hydrofabric_all_domains.parquet' # gage hydrofabric file (including geometry)
   crosswalk_file: '{base_dir}/inputs/regionalization/usgs_{nwm_version}_crosswalk_{domain}.parquet' # crosswalk file mapping gage IDs to NWM/ngen link IDs
   fcst_data_file: '~/repos/nwm-region-mgr/data/regionalization/{dataset_name}/{location_set_name}/Output/troute_output_{forecast_start_date}.nc' # forecast data directory (must be specified when nwm_forecast.data_source is set to ngenCERF)
   output_dir: '{base_dir}/outputs/{location_set_name}' # output directory to store all datasets, metrics and plots

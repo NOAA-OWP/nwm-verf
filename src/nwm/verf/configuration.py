@@ -34,7 +34,6 @@ class FilePathsConfig(BaseModel):
     base_dir: Path
     location_list_file: Optional[str] = None
     crosswalk_file: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = None
-    gage_hydrofabric_file: str | Path
     fcst_config_file: Optional[str | Path] = None
     fcst_data_file: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = None
     output_dir: str | Path

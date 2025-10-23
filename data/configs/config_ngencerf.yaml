@@ -19,7 +19,7 @@ general:
 #### configurations for various file paths
 file_paths:
   base_dir: ~/repos/nwm-verf/data/ # root directory to store data/outputs for verification
-  gage_hydrofabric_file: '{base_dir}/inputs/gage_files/gage_hydrofabric_all_domains.parquet' # gage hydrofabric file (including geometry)
+  #gage_hydrofabric_file: '{base_dir}/inputs/gage_files/gage_hydrofabric_all_domains.parquet' # gage hydrofabric file (including geometry)
   crosswalk_file: '{base_dir}/inputs/gage_files/usgs_{nwm_version}_crosswalk_all_domains.parquet' # crosswalk file mapping gage IDs to NWM/ngen link IDs
   fcst_config_file: '{base_dir}/inputs/nwm_forecast_configuration.yaml' # NWM forecast configuration file
   fcst_data_file: '{base_dir}/inputs/{location_set_name}/{dataset_name}/{nwm_configuration}.csv' # forecast data directory (must be specified when nwm_forecast.data_source is set to ngenCERF)

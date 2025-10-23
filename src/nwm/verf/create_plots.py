@@ -18,7 +18,7 @@ from .settings import (
     get_metric_bins,
     get_metric_colormap,
 )
-from .utils import clean_data
+from .utils import clean_data, read_data
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -180,7 +180,14 @@ def create_spatial_map(conf: dict, data_paths: dict):
     metrics_long = get_metric_long_name(metrics, conf["metrics"]["library"])
 
     # add geometry (lat/lon)
-    df_geo = gpd.read_parquet(data_paths["geofile"])
+    df_geo = read_data(data_paths["crosswalk"][list(data_paths["crosswalk"].keys())[0]])
+    if "geometry" not in df_geo.columns:
+        logger.warning(
+            f"Geometry column not found in crosswalk file: {data_paths['crosswalk']}"
+            f"; spatial maps cannot be created."
+        )
+        return
+
     df_geo = df_geo[["primary_location_id", "geometry"]]
     gdf_metrics = df_geo.merge(df_metrics, on="primary_location_id", how="inner")
 
@@ -485,7 +492,6 @@ def create_time_series(conf: dict, data_paths: dict):
 
     # Plot
     fig, ax = plt.subplots(figsize=(10, 6))
-    # plt.figure(figsize=(12, 6))
     ax.plot(
         merged_df["value_time"],
         merged_df["primary_value"],

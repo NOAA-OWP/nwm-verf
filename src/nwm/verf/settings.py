@@ -257,9 +257,6 @@ def data_paths(conf: dict) -> dict:
                 logger.error(msg)
                 raise ValueError(msg)
 
-    # path for geometry file
-    geo_file = Path(conf2["gage_hydrofabric_file"]).resolve(strict=True)
-
     # assemble all paths into a dictionary
     data_paths = {
         "fcst": fcst_data_dir,
@@ -270,7 +267,6 @@ def data_paths(conf: dict) -> dict:
         "metrics": metric_file,
         "plots": plot_dir,
         "crosswalk": cwt_file,
-        "geofile": geo_file,
     }
 
     return data_paths
