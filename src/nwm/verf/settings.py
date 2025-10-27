@@ -199,7 +199,6 @@ def data_paths(conf: dict) -> dict:
 
     # paths for all observations
     obs_dir = Path(root_dir, sub_dir, "usgs")
-    obs_dir.mkdir(parents=True, exist_ok=True)
 
     # paths for forecast datasets
     fcst_data_dir = dict()
@@ -258,9 +257,6 @@ def data_paths(conf: dict) -> dict:
                 logger.error(msg)
                 raise ValueError(msg)
 
-    # path for geometry file
-    geo_file = Path(conf2["gage_hydrofabric_file"]).resolve(strict=True)
-
     # assemble all paths into a dictionary
     data_paths = {
         "fcst": fcst_data_dir,
@@ -271,7 +267,31 @@ def data_paths(conf: dict) -> dict:
         "metrics": metric_file,
         "plots": plot_dir,
         "crosswalk": cwt_file,
-        "geofile": geo_file,
     }
 
     return data_paths
+
+
+conus_vpu_list = [
+    "01",
+    "02",
+    "03N",
+    "03S",
+    "03W",
+    "04",
+    "05",
+    "06",
+    "07",
+    "08",
+    "09",
+    "10U",
+    "10L",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "18",
+]

@@ -351,11 +351,28 @@ def save_data(
         )
 
 
+def read_parquet_auto(file_path: str | Path) -> pd.DataFrame | gpd.GeoDataFrame:
+    """Automatically read a parquet file as a DataFrame or GeoDataFrame."""
+    file_path = Path(file_path)
+    df = pd.read_parquet(file_path)
+
+    # Heuristic: if there is a 'geometry' column, assume GeoDataFrame
+    if "geometry" in df.columns:
+        try:
+            gdf = gpd.read_parquet(file_path)
+            return gdf
+        except Exception:
+            # fallback to normal DataFrame if conversion fails
+            return df
+    else:
+        return df
+
+
 def read_data(
     file_path: Path | str,
     dtype: dict[str, str] | None = None,
     parse_dates: list[str] | None = None,
-) -> pd.DataFrame:
+) -> pd.DataFrame | gpd.GeoDataFrame:
     """Read data from a csv or parquet file.
 
     Args:
@@ -365,7 +382,7 @@ def read_data(
         parse_dates (list[str] | None): Optional list of columns to parse as dates.
 
     Returns:
-        pd.DataFrame: DataFrame containing the data from the file.
+        pd.DataFrame | gpd.GeoDataFrame: DataFrame or GeoDataFrame containing the data from the file.
 
     """
     file_path = Path(file_path)
@@ -381,7 +398,7 @@ def read_data(
             # Fallback to tab-delimited
             df = pd.read_csv(file_path, sep="\t", dtype=dtype, parse_dates=parse_dates)
     elif suffix == ".parquet":
-        df = pd.read_parquet(file_path)
+        df = read_parquet_auto(file_path)
     else:
         raise ValueError(f"Unsupported file format: {suffix}")
 

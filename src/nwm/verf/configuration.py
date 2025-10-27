@@ -13,6 +13,7 @@ class GeneralConfig(BaseModel):
 
     steps: Dict[str, bool]
     domain: Optional[str] = None
+    assemble_domain: Optional[bool] = False
     location_set_name: str
     location_list: Optional[List[Union[str, int]]] = None
     location_type: Optional[str] = None
@@ -33,7 +34,6 @@ class FilePathsConfig(BaseModel):
     base_dir: Path
     location_list_file: Optional[str] = None
     crosswalk_file: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = None
-    gage_hydrofabric_file: str | Path
     fcst_config_file: Optional[str | Path] = None
     fcst_data_file: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = None
     output_dir: str | Path

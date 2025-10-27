@@ -12,8 +12,6 @@ from teehr.classes.duckdb_joined_parquet import DuckDBJoinedParquet
 from .nwm_configs import ForecastConfig
 from .settings import dict_nwm_eval_metrics, dict_teehr_metrics
 
-# from .utils import get_key_from_value
-
 warnings.filterwarnings("ignore")
 
 import logging
@@ -119,7 +117,6 @@ def func_calc_metrics(
 def calc_nwm_eval_metrics(
     pairs: Path,
     metrics: list[str],
-    # metrics: Optional[Union[str,list]]="all",
     thresholds: Optional[list] = [0.9, 0.9],
 ) -> pd.DataFrame:
     # read in paired data parquet
@@ -210,7 +207,6 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
         leads1 = l1.split("-")
         if len(leads1) == 1:
             leads1 = leads1 + leads1
-        # leads1 = list(range(int(leads1[0]), int(leads1[1]) + lead_step, lead_step))
 
         start = float(leads1[0])
         end = float(leads1[1])
@@ -295,7 +291,12 @@ def calc_metrics(conf: dict, data_paths: dict):
                 else:
                     logger.info(f"  Calculating metrics for {dataset} ...")
 
-                df_metrics = calc_metrics_group(conf, pair_file, data_paths["geofile"])
+                # df_metrics = calc_metrics_group(conf, pair_file, data_paths["geofile"])
+                df_metrics = calc_metrics_group(
+                    conf,
+                    pair_file,
+                    data_paths["crosswalk"][list(data_paths["crosswalk"].keys())[0]],
+                )
 
                 # write metrics to file
                 metric_path = Path(metric_file)
@@ -321,11 +322,3 @@ def calc_metrics(conf: dict, data_paths: dict):
 
                 else:
                     raise ValueError(f"Unsupported file type: {metric_path.suffix}")
-                # if i1 == 0:
-                #     df_metrics.to_parquet(
-                #         metric_file, engine="fastparquet", index=False
-                #     )
-                # else:
-                #     df_metrics.to_parquet(
-                #         metric_file, engine="fastparquet", index=False, append=True
-                #     )

@@ -185,7 +185,6 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
         date_list.append(list1)
 
         # determine n_workers dynamically
-        # n_workers = max(os.cpu_count() - 2, 1)
         mem_limit = conf2["memory_per_worker_gb"]
         n_workers = get_n_workers(mem_limit)
 
@@ -318,7 +317,6 @@ def retrieve_fcsts_gcs(locations: dict, conf: dict, data_paths: dict):
     config = conf1["nwm_configuration"]
 
     # determine n_workers dynamically
-    # n_workers = max(os.cpu_count() - 2, 1)
     mem_limit = conf2["memory_per_worker_gb"]
     n_workers = get_n_workers(mem_limit)
 
@@ -456,7 +454,7 @@ def extract_flow_for_gages(
 
     """
     # Read crosswalk
-    cwt_df = pd.read_parquet(crosswalk_file)
+    cwt_df = read_data(crosswalk_file)
 
     # Read list of gages to include
     gages_df = pd.read_csv(gage_file, dtype=str, header=0, names=["gage"])

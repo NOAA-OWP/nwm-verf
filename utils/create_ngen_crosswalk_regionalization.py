@@ -8,51 +8,69 @@ import geopandas as gpd
 
 def main(domain: str = "conus", out_dir: str | Path = "."):
     """Create ngen divide crosswalk for all gages for regionalization evaluation."""
-    # conus gpkg file
+    # Input GeoPackage (mount the s3 bucket with: s3fs hydrofabric-data ~/s3/hydrofabric-data)
     conus_in = Path(
         f"~/s3/hydrofabric-data/patch/7_30_25/nwm_patch_{domain}_nextgen.gpkg"
     ).expanduser()
 
-    # Read in conus geopackage hydrolocations layer
+    print(f"Reading hydrolocations from {conus_in}...")
     gdf = gpd.read_file(conus_in, layer="hydrolocations")
 
-    # get required columns (id: feature id, hl_uri: gage id, vpuid: vpu id)
+    # Select required columns
     df_cwt = gdf[["id", "hl_uri", "vpuid"]].copy()
 
-    # keep only rows with hl_uri starting with 'gages-'
+    # Keep only rows with hl_uri starting with 'gages-'
     df_cwt = df_cwt[df_cwt["hl_uri"].str.startswith("gages-")].copy()
 
-    # replace "wb-" with "ngen-" in id columns to create secondary_location_id
-    df_cwt["secondary_location_id"] = df_cwt["id"].str.replace(
+    print(f"Reading divides from {conus_in}...")
+    gdf_divides = gpd.read_file(conus_in, layer="divides")[["id", "geometry"]]
+
+    print("Merging crosswalk with divide geometries...")
+    df_cwt = df_cwt.merge(gdf_divides, on="id", how="left")
+    gdf_cwt = gpd.GeoDataFrame(df_cwt, geometry="geometry", crs=gdf_divides.crs)
+
+    print("Converting divide polygons to points with centroids...")
+    gdf_cwt["centroid"] = gdf_cwt.geometry.centroid
+    gdf_cwt["geometry"] = gpd.points_from_xy(
+        gdf_cwt["centroid"].x, gdf_cwt["centroid"].y, crs=gdf_cwt.crs
+    )
+    gdf_cwt = gdf_cwt.drop(columns=["centroid"])
+
+    # Reproject to WGS84 (lat/lon)
+    gdf_cwt = gdf_cwt.to_crs(epsg=4326)
+
+    # Replace prefixes to make location IDs
+    gdf_cwt["secondary_location_id"] = gdf_cwt["id"].str.replace(
         "wb-", "ngen-", regex=False
     )
-
-    # replace "gages-" with "usgs-" in hl_uri column to create primary_location_id
-    df_cwt["primary_location_id"] = df_cwt["hl_uri"].str.replace(
+    gdf_cwt["primary_location_id"] = gdf_cwt["hl_uri"].str.replace(
         "gages-", "usgs-", regex=False
     )
 
-    # add domain column
-    df_cwt["domain"] = domain.upper()
+    # Add domain column
+    gdf_cwt["domain"] = domain.upper()
 
-    # reorder columns
-    df_cwt = df_cwt[["domain", "primary_location_id", "secondary_location_id", "vpuid"]]
+    # Reorder columns
+    gdf_cwt = gdf_cwt[
+        ["domain", "primary_location_id", "secondary_location_id", "vpuid", "geometry"]
+    ]
 
-    # Save the crosswalk table to a parquet file
+    # Save the crosswalk GeoDataFrame to Parquet
     cwt_file = Path(out_dir) / f"usgs_ngen_crosswalk_{domain}.parquet"
+    print(f"Saving Crosswalk GeoDataFrame to {cwt_file} with {len(gdf_cwt)} entries...")
+
     cwt_file.parent.mkdir(parents=True, exist_ok=True)
-    df_cwt.to_parquet(cwt_file, index=False)
-    print(f"Crosswalk table saved to {cwt_file} with {len(df_cwt)} entries.")
+    gdf_cwt.to_parquet(cwt_file, index=False)
 
     # loop through unique VPUs to create a gage list file for each VPU
-    for vpu in df_cwt["vpuid"].dropna().unique():
-        df_vpu = df_cwt.loc[df_cwt["vpuid"] == vpu, ["primary_location_id"]].copy()
+    for vpu in gdf_cwt["vpuid"].dropna().unique():
+        df_vpu = gdf_cwt.loc[gdf_cwt["vpuid"] == vpu, ["primary_location_id"]].copy()
         df_vpu.rename(columns={"primary_location_id": "gage"}, inplace=True)
 
         # remove "gages-" prefix
         df_vpu["gage"] = df_vpu["gage"].str.replace("usgs-", "", regex=False)
 
-        gage_file = Path(out_dir) / f"gage_list_{domain}_vpu_{vpu}.txt"
+        gage_file = Path(out_dir) / f"gage_list_{domain}_vpu_{vpu}.csv"
         df_vpu = df_vpu.sort_values(by="gage").reset_index(drop=True)
 
         df_vpu.to_csv(gage_file, index=False, header=True)
