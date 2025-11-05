@@ -249,7 +249,6 @@ class ProcessConfig(BaseModel):
 
         # validate paths
         paths = self.assemble_file_paths(exclude=exclude_files)
-        print(f"Validating file paths: {paths}")
         self.validate_paths(paths)
 
         # setup logger

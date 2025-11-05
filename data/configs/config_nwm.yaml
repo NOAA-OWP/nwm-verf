@@ -4,10 +4,10 @@ general:
   # define which of the 5 steps to run; each step can be run independently, 
   # assuming data from previous steps (from previous runs) are available for use
   steps:
-    fetch_fcst_data: true
-    fetch_obs_data: true
-    pair_data: true
-    compute_metrics: true
+    fetch_fcst_data: false
+    fetch_obs_data: false
+    pair_data: false
+    compute_metrics: false
     plot_metrics: true
 
   # user-specified name for the set of locations to carry out verification for
@@ -34,8 +34,8 @@ general:
 
   # list of start/end dates for forecast verification period; list must have the same length as 'dataset_name'
   # date ranges specified must be applicable to the corresponding NWM archive in Google Cloud 
-  forecast_start_date: ['2024-09-01', '2024-10-01']
-  forecast_end_date: ['2024-09-30', '2024-10-30']
+  forecast_start_date: ['2024-09-01 00:00:00', '2024-10-01 00:00:00']
+  forecast_end_date: ['2024-09-30 23:00:00', '2024-10-30 23:00:00']
 
 #### configurations for various file paths
 # sample files can be obtained from repo at nwm-verf/sample_files/gage_files

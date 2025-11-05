@@ -67,7 +67,9 @@ def check_existing_obs_data(obs_dir: str | Path) -> list:
     return dates0
 
 
-def check_missing_obs_data(obs_dir: str | Path, conf: dict) -> list[pd.Timestamp]:
+def check_missing_obs_data(
+    obs_dir: str | Path, conf: dict, gages: list
+) -> list[pd.Timestamp]:
     """Check for missing observation data in the specified directory."""
     # Get existing observation dates
     parquet_files = glob.glob(str(obs_dir) + "/*.parquet")
@@ -77,24 +79,52 @@ def check_missing_obs_data(obs_dir: str | Path, conf: dict) -> list[pd.Timestamp
     existing_dates = df["value_time"].unique().tolist()
 
     # Get required observation dates
-    fcst_win, time_step, _ = get_fcst_info(conf)
+    time_step = 1
+    if conf["general"]["nwm_configuration"] != "ngen_simulation":
+        fcst_win, time_step, _ = get_fcst_info(conf)
     conf1 = conf["general"]
-    for i1 in range(len(conf1["forecast_start_date"])):
-        start_date = pd.to_datetime(conf1["forecast_start_date"][i1]) + pd.Timedelta(
-            hours=time_step
-        )
-        end_date = pd.to_datetime(conf1["forecast_end_date"][i1]) + pd.Timedelta(
-            hours=fcst_win
-        )
+    for i1, dataset in enumerate(conf1["dataset_name"]):
+        if conf1["nwm_configuration"] == "ngen_simulation":
+            start_date = pd.to_datetime(conf1["eval_start_date"][i1])
+            end_date = pd.to_datetime(conf1["eval_end_date"][i1])
+        else:
+            start_date = pd.to_datetime(
+                conf1["forecast_start_date"][i1]
+            ) + pd.Timedelta(hours=time_step)
+            end_date = pd.to_datetime(conf1["forecast_end_date"][i1]) + pd.Timedelta(
+                hours=fcst_win
+            )
         required_dates = create_time_sequence(start_date, end_date, freq_hour=time_step)
 
-        # Check for missing dates
-        missing_dates = [d for d in required_dates if d not in existing_dates]
-        if missing_dates:
-            formatted = ", ".join(
-                [d.strftime("%Y-%m-%d %H:%M:%S") for d in missing_dates]
+        # Check for missing data. For ngenCERF (single gage), check by dates; otherwise, check by gages
+        if conf["nwm_forecast"]["data_source"][i1] == "ngenCERF":
+            # Check for missing dates
+            missing_dates = [d for d in required_dates if d not in existing_dates]
+            if missing_dates:
+                formatted = ", ".join(
+                    [d.strftime("%Y-%m-%d %H:%M:%S") for d in missing_dates]
+                )
+                logger.warning(
+                    f"{dataset} - Missing observation data for dates: {formatted}"
+                )
+        else:
+            # first filter data with dates within required dates range
+            df_required = df[
+                (df["value_time"] >= min(required_dates))
+                & (df["value_time"] <= max(required_dates))
+            ]
+
+            # then check for missing gages
+            existing_gages = df_required["location_id"].unique().tolist()
+            logger.info(
+                f"{dataset} - Number of gages with observation data available: {len(existing_gages)}"
             )
-            logger.warning(f"Missing observation data for dates: {formatted}")
+            missing_gages = [g for g in gages if f"usgs-{g}" not in existing_gages]
+            if missing_gages:
+                logger.warning(
+                    f"{dataset} - Missing observation data for {len(missing_gages)} gages."
+                )
+                logger.debug(f"{dataset} - Missing gages: {missing_gages}")
 
 
 def safe_fetch_usgs(
@@ -215,9 +245,8 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
             f"  USGS observation data are saved in parquet files at: {output_dir}"
         )
 
-    # Check for missing observation data if list_usgs contains only one location (e.g., for ngenCERF forecasts)
-    if len(list_usgs) == 1:
-        check_missing_obs_data(output_dir, conf)
+    # Check for missing observation data after retrieval
+    check_missing_obs_data(output_dir, conf, list_usgs)
 
 
 def retrieve_fcsts_ngencerf(conf: dict, data_paths: dict):

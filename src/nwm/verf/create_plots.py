@@ -140,12 +140,18 @@ def save_plot(
     if plt_type in ["time_series", "barchart", "metric_table"]:
         file1 = f"{plt_name}_{conf['general']['location_list'][0]}.png"
     else:
-        if lead and dataset and metric:
-            file1 = f"{plt_name}_{metric}_h{lead}_{dataset}.png"  # spatial map
+        if lead and dataset and metric:  # spatial map
+            if str(lead) == "0":
+                file1 = f"{plt_name}_{metric}_{dataset}.png"
+            else:
+                file1 = f"{plt_name}_{metric}_h{lead}_{dataset}.png"
         elif metric and not lead and not dataset:  # boxplot
             file1 = f"{plt_name}_{metric}.png"
         elif metric and lead:  # histogram
-            file1 = f"{plt_name}_{metric}_h{lead}.png"
+            if str(lead) == "0":
+                file1 = f"{plt_name}_{metric}.png"
+            else:
+                file1 = f"{plt_name}_{metric}_h{lead}.png"
         else:
             msg = f"Insufficient information to name the plot file: plt_type={plt_type}, plt_name={plt_name}, "
             msg += f"lead={lead}, dataset={dataset}, metric={metric}"
@@ -220,6 +226,10 @@ def create_spatial_map(conf: dict, data_paths: dict):
                     )
                     continue
 
+                logger.debug(
+                    f"Number of locations after filtering nan and inf: {filtered_gdf['primary_location_id'].nunique()}"
+                )
+
                 # clip the data
                 if not np.isnan(cmap1[metric1]["clim"][0]) and not np.isnan(
                     cmap1[metric1]["clim"][1]
@@ -237,9 +247,10 @@ def create_spatial_map(conf: dict, data_paths: dict):
 
                 ax.set_title(
                     f"{metric1} ({metric_long}), "
-                    f"{'' if lead1 == '0' else f'lead_time={lead1}h, '}"
+                    f"{'' if lead1 == '0' else f'lead={lead1}h, '}"
                     f"dataset={case1}",
-                    fontsize=14,
+                    fontsize=16,
+                    pad=16,
                 )
 
                 # Add map features
@@ -274,7 +285,7 @@ def create_spatial_map(conf: dict, data_paths: dict):
                     linewidth=0.5,
                     s=point_size,
                     alpha=0.8,
-                    label="Non-calibrated",
+                    label=f"Non-calibrated(n={gdf_noncalib['primary_location_id'].nunique()})",
                 )
 
                 # Plot calibrated points (triangle symbols)
@@ -289,7 +300,7 @@ def create_spatial_map(conf: dict, data_paths: dict):
                         linewidth=1.0,
                         s=point_size * 1.2,  # make them slightly more visible
                         alpha=0.8,
-                        label="Calibrated",
+                        label=f"Calibrated(n={gdf_calib['primary_location_id'].nunique()})",
                     )
 
                     # Add legend outside the plot (to the right)
@@ -302,7 +313,16 @@ def create_spatial_map(conf: dict, data_paths: dict):
                     )
 
                 # Colorbar from one of the scatter plots
-                plt.colorbar(sc1, ax=ax, label="", orientation="horizontal", pad=0.02)
+                cbar = plt.colorbar(
+                    sc1,
+                    ax=ax,
+                    label="",
+                    orientation="horizontal",
+                    pad=0.02,
+                )
+                cbar.ax.tick_params(labelsize=14)
+
+                # set aspect ratio
                 ax.set_aspect(1.35)
 
                 # save plot to png
@@ -345,7 +365,7 @@ def set_up_figure(df1: pd.DataFrame, df2: pd.DataFrame, plot_type: str = "boxplo
         if multi_plot:
             fig_width = 9  # wide figure for two subplots
         else:
-            fig_width = 5  # single subplot
+            fig_width = 6  # single subplot
     else:
         # default fallback
         fig_width = 8
@@ -435,6 +455,10 @@ def create_boxplot(conf: dict, data_paths: dict):
             )
             continue
 
+        logger.debug(
+            f"Number of locations after filtering nan and inf: {df1['primary_location_id'].nunique()}"
+        )
+
         # clip the data
         if not np.isnan(cmap1[metric1]["clim"][0]) and not np.isnan(
             cmap1[metric1]["clim"][1]
@@ -462,10 +486,15 @@ def create_boxplot(conf: dict, data_paths: dict):
             palette=palette,
             ax=axes[0],
         )
-        tit1 = "Non-Calibrated Locations" if len(df_calib) > 0 else "All Locations"
+        str1 = df_noncalib["primary_location_id"].nunique()
+        tit1 = (
+            f"Non-Calibrated Locations \n(n={str1})"
+            if len(df_calib) > 0
+            else f"All Locations \n(n={str1})"
+        )
         axes[0].set_title(tit1)
         axes[0].set_ylabel(f"{metric1} ({metric_long})", fontsize=12)
-        axes[0].set_yticklabels(axes[0].get_yticklabels(), fontsize=12)
+        axes[0].set_yticklabels(axes[0].get_yticklabels(), fontsize=10)
 
         # Plot calibrated if it exists
         if len(df_calib) > 0:
@@ -479,7 +508,8 @@ def create_boxplot(conf: dict, data_paths: dict):
                 palette=palette,
                 ax=axes[1],
             )
-            axes[1].set_title("Calibrated Locations")
+            str2 = df_calib["primary_location_id"].nunique()
+            axes[1].set_title(f"Calibrated Locations \n(n={str2})")
 
         # Remove x-ticks and labels from all subplots
         if (df1["lead_group"] == "0").all():
@@ -490,7 +520,7 @@ def create_boxplot(conf: dict, data_paths: dict):
         else:
             for ax in axes:
                 ax.set_xlabel("Lead time (hours)", fontsize=12)
-                ax.set_xticklabels(ax.get_xticklabels(), rotation=45, fontsize=12)
+                ax.set_xticklabels(ax.get_xticklabels(), rotation=45, fontsize=10)
 
         # Add shared legend
         add_shared_legend(fig, axes, dataset_names, palette)
@@ -556,6 +586,10 @@ def create_histogram(conf: dict, data_paths: dict):
                 )
                 continue
 
+            logger.debug(
+                f"Number of locations after filtering nan and inf: {df['primary_location_id'].nunique()}"
+            )
+
             # bin the data to create customized histograms
             if len(bins1) > 0:
                 df["binned"] = pd.cut(df["value"], bins=bins1)
@@ -587,7 +621,12 @@ def create_histogram(conf: dict, data_paths: dict):
                 discrete=True,
                 ax=axes[0],
             )
-            tit1 = "Non-Calibrated Locations" if len(df_calib) > 0 else "All Locations"
+            str1 = df_noncalib["primary_location_id"].nunique()
+            tit1 = (
+                f"Non-Calibrated Locations (n={str1})"
+                if len(df_calib) > 0
+                else f"All Locations (n={str1})"
+            )
             axes[0].set_title(tit1)
             axes[0].set_ylabel(f"{metric1} ({metric_long})", fontsize=12)
             axes[0].set_yticklabels(axes[0].get_yticklabels(), fontsize=10)
@@ -604,7 +643,8 @@ def create_histogram(conf: dict, data_paths: dict):
                     discrete=True,
                     ax=axes[1],
                 )
-                axes[1].set_title("Calibrated Locations")
+                str2 = df_calib["primary_location_id"].nunique()
+                axes[1].set_title(f"Calibrated Locations (n={str2})")
 
             # set x-tick labels rotation and titles
             for ax in axes:
@@ -612,7 +652,7 @@ def create_histogram(conf: dict, data_paths: dict):
                 ax.set_ylabel("Number of locations", fontsize=12)
                 ax.set_xlabel(
                     f"{metric1} ({metric_long})"
-                    f"{'' if lead1 == '0' else f'   lead_time={lead1}h'}",
+                    f"{'' if lead1 == '0' else f'   lead={lead1}h'}",
                     fontsize=12,
                 )
                 plt.subplots_adjust(bottom=0.2)
@@ -685,13 +725,16 @@ def create_time_series(conf: dict, data_paths: dict):
             label=dataset,
         )
 
-    ax.set_xlabel("Time")
-    ax.set_ylabel(f"Streamflow ({unit})")
+    ax.set_xlabel("Time", fontsize=12)
+    ax.set_ylabel(f"Streamflow ({unit})", fontsize=12)
+    ax.set_yticklabels(ax.get_yticklabels(), fontsize=10)
+    ax.set_xticklabels(ax.get_xticklabels(), fontsize=10)
     ax.set_title(
         f"Simulated vs Observed Streamflow at {conf['general']['location_list'][0]}\n"
-        f"{conf['general']['nwm_configuration']}    T0 = {conf['general']['forecast_start_date'][0]}"
+        f"{conf['general']['nwm_configuration']}    T0 = {conf['general']['forecast_start_date'][0]}",
+        fontsize=14,
     )
-    ax.legend()
+    ax.legend(fontsize=10)
     ax.grid(True)
 
     fig.autofmt_xdate()
@@ -903,9 +946,6 @@ def create_all_plots(conf: dict, data_paths: dict):
         calib_gages = [f"usgs-{gid}" for gid in calib_gages]
         conf["general"]["calib_gages"] = calib_gages
     else:
-        logger.info(
-            "  Creating plots without distinguishing calibrated and regionalized locations."
-        )
         conf["general"]["calib_gages"] = []
 
     for plot_type, func in plot_functions.items():

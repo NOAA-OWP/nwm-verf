@@ -1,10 +1,10 @@
 #### configuration for the verification run
 general:   
   steps: # define which of the 5 steps to run; each step can be run independently,
-    fetch_fcst_data: true
-    fetch_obs_data: true
-    pair_data: true
-    compute_metrics: true
+    fetch_fcst_data: false
+    fetch_obs_data: false
+    pair_data: false
+    compute_metrics: false
     plot_metrics: true
   domain: conus  # Define NWM domain. Supported options: conus, ak, hi, prvi
   assemble_domain: false # whether to assemble metrics from various VPUs for the entire domain and plot domain-level metrics
@@ -16,8 +16,8 @@ general:
   nwm_version: [ngen, ngen] # list of NWM versions; must have the same length as 'dataset_name'
   forecast_start_date: ['2021-10-01 00:00:00', '2021-10-01 00:00:00'] # list of start dates for simulation; must be same length as 'dataset_name'
   forecast_end_date: ['2021-11-01 00:00:00', '2021-11-01 00:00:00'] # list of end dates for simulation; must be same length as 'dataset_name'
-  eval_start_date: ['2021-10-03 00:00:00', '2021-10-03 00:00:00'] # start date for evaluation period
-  eval_end_date: ['2022-11-01 00:00:00', '2022-11-01 00:00:00'] # end date for evaluation period
+  eval_start_date: ['2021-10-03 00:00:00', '2021-10-03 00:00:00'] # start date for evaluation period, only used for ngenSIM
+  eval_end_date: ['2021-11-01 00:00:00', '2021-11-01 00:00:00'] # end date for evaluation period, only used for ngenSIM
   separate_calibrated: false # whether to distinguish calibrated and regionalized locations in the evaluation
 
 #### configurations for various file paths
@@ -31,12 +31,12 @@ file_paths:
   output_dir: '{base_dir}/outputs/{location_set_name}' # output directory to store all datasets, metrics and plots
 
 nwm_forecast:
-  data_source: ngenSIM   # Specifies the remote location from which to fetch the data ("GCS", "NOMADS", "DSTOR", "ngenCERF")
+  data_source: ngenSIM   # Specifies the remote location from which to fetch the data ("GCS", "NOMADS", "DSTOR", "ngenCERF", 'ngenSIM')
 
 flow_observation:
   usgs: # flow obs retrieved will be stored at [data_dir_root]/[location_set_name]/usgs
     chunk_by: month   # data are saved in parquet files by day/month/year
-    overwrite_output: False  # If True, existing output files will be overwritten; if False, existing files are retained
+    overwrite_output: True  # If True, existing output files will be overwritten; if False, existing files are retained
     memory_per_worker_gb: 3  # configurable memory (in GB) assigned to each worker
 
 pair_data:  

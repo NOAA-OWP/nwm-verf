@@ -27,7 +27,7 @@ class GeneralConfig(BaseModel):
     eval_start_date: Optional[List[str]] = None
     eval_end_date: Optional[List[str]] = None
     separate_calibrated: Optional[bool] = Field(
-        default=True,
+        default=False,
         description="Whether to distinguish calibrated and regionalized locations in the evaluation",
     )
 
