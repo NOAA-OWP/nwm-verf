@@ -61,6 +61,8 @@ def run_verification(conf: dict):
                     dataset,
                     nwm_version,
                     conf["pair_data"]["group_size"],
+                    conf["general"].get("eval_start_date", [None])[dataset_idx],
+                    conf["general"].get("eval_end_date", [None])[dataset_idx],
                     conf["pair_data"]["overwrite"],
                 )
 

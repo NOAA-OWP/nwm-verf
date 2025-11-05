@@ -1,5 +1,6 @@
 import logging
 import math
+from datetime import datetime
 from pathlib import Path
 
 import duckdb
@@ -41,6 +42,8 @@ def export_location_groups_with_lead_time(
     output_path: Path,
     table_name: str = "joined_timeseries",
     group_size: int = 200,
+    start_time: str = None,
+    end_time: str = None,
 ):
     # Get sorted list of unique primary_location_id values
     con = duckdb.connect(str(db_path))
@@ -52,10 +55,22 @@ def export_location_groups_with_lead_time(
 
     if len(location_ids) == 0:
         raise Exception(
-            f"ERROR: no primary_location_id found in the joined_timeseries database"
+            "ERROR: no primary_location_id found in the joined_timeseries database"
         )
 
     n_groups = math.ceil(len(location_ids) / group_size)
+
+    # define time bounds for filtering reference_time
+    min_ref_time = (
+        datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S") if start_time else None
+    )
+    max_ref_time = (
+        datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S") if end_time else None
+    )
+
+    # Convert datetime to string in SQL format
+    min_ref_str = f"'{min_ref_time}'" if min_ref_time else "NULL"
+    max_ref_str = f"'{max_ref_time}'" if max_ref_time else "NULL"
 
     # Split the list into n groups and process each group separately
     for i in range(n_groups):
@@ -70,28 +85,33 @@ def export_location_groups_with_lead_time(
             group_file = output_path.with_name(output_path.stem + ".parquet")
             logger.info(f"  Exporting paired data to {group_file} ...")
 
+        # Ensure group_file is a Path and convert to absolute string
+        group_file_path = str(Path(group_file).resolve())
+
+        # Convert IDs list to a comma-separated string
         formatted_ids = ", ".join(f"'{loc}'" for loc in group_ids)
 
-        # Query with lead_time calculation and drop reference_time
-        con.execute(f"""
-            COPY (
-                SELECT
-                    primary_location_id,
-                    primary_value,
-                    secondary_location_id,
-                    secondary_value,
-                    value_time,
-                    configuration,
-                    measurement_unit,
-                    variable_name,
-                    reference_time,
-                    (EXTRACT(EPOCH FROM value_time) - EXTRACT(EPOCH FROM reference_time)) / 3600.0 AS lead_time
-                FROM {table_name}
-                WHERE primary_location_id IN ({formatted_ids})
-            )
-            TO '{group_file}' (FORMAT PARQUET)
-        """)
-
+        query = f"""
+        COPY (
+            SELECT
+                primary_location_id,
+                primary_value,
+                secondary_location_id,
+                secondary_value,
+                value_time,
+                configuration,
+                measurement_unit,
+                variable_name,
+                reference_time,
+                (EXTRACT(EPOCH FROM value_time) - EXTRACT(EPOCH FROM reference_time)) / 3600.0 AS lead_time
+            FROM {table_name}
+            WHERE primary_location_id IN ({formatted_ids})
+            {f"AND reference_time >= {min_ref_str}" if min_ref_time else ""}
+            {f"AND reference_time <= {max_ref_str}" if max_ref_time else ""}
+        )
+        TO '{group_file_path}' (FORMAT PARQUET)
+        """
+        con.execute(query)
     con.close()
 
 
@@ -100,6 +120,8 @@ def create_pairs(
     dataset: str,
     nwm_version: str,
     group_size=200,
+    start_time: str = None,
+    end_time: str = None,
     overwrite: bool = False,
 ) -> Path:
     # check if paired data already exist; if not, create it
@@ -124,7 +146,12 @@ def create_pairs(
 
         # then calculate lead times and export paired data by group (to avoid potential memory issues)
         export_location_groups_with_lead_time(
-            db_path, pair_file, table_name="joined_timeseries", group_size=group_size
+            db_path,
+            pair_file,
+            table_name="joined_timeseries",
+            group_size=group_size,
+            start_time=start_time,
+            end_time=end_time,
         )
 
         # remove the temporay database
