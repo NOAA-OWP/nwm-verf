@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from matplotlib.patches import Patch
 
 from .configuration import PlotsConfig
 from .nwm_configs import ForecastConfig
@@ -159,6 +160,15 @@ def save_plot(
     return fig_dir
 
 
+def group_df_by_location(
+    df: pd.DataFrame | gpd.GeoDataFrame, location_list: list, location_col: str
+) -> tuple:
+    """Group DataFrame by location and return a tuple of DataFrames (in_list, out_list)."""
+    df_inlist = df[df[location_col].isin(location_list)]
+    df_outlist = df[~df[location_col].isin(location_list)]
+    return df_inlist, df_outlist
+
+
 def create_spatial_map(conf: dict, data_paths: dict):
     """Create spatial maps for each dataset, metric, and lead time."""
     # gather all metrics calcualted
@@ -228,7 +238,8 @@ def create_spatial_map(conf: dict, data_paths: dict):
                 ax.set_title(
                     f"{metric1} ({metric_long}), "
                     f"{'' if lead1 == '0' else f'lead_time={lead1}h, '}"
-                    f"dataset={case1}"
+                    f"dataset={case1}",
+                    fontsize=14,
                 )
 
                 # Add map features
@@ -245,18 +256,53 @@ def create_spatial_map(conf: dict, data_paths: dict):
                 )  # minimum size to keep the points visible
                 point_size = min(100, point_size)  # don't want them too big either
 
-                # Plot points
-                sc = ax.scatter(
-                    filtered_gdf.geometry.x,
-                    filtered_gdf.geometry.y,
-                    c=filtered_gdf["value"],
+                # Split GeoDataFrame into calibrated and non-calibrated subsets
+                gdf_calib, gdf_noncalib = group_df_by_location(
+                    filtered_gdf,
+                    conf["general"].get("calib_gages", []),
+                    "primary_location_id",
+                )
+
+                # Plot non-calibrated points (circles)
+                sc1 = ax.scatter(
+                    gdf_noncalib.geometry.x,
+                    gdf_noncalib.geometry.y,
+                    c=gdf_noncalib["value"],
                     cmap=cmap1[metric1]["cmap"],
+                    marker="o",
                     edgecolor="k",
                     linewidth=0.5,
                     s=point_size,
                     alpha=0.8,
+                    label="Non-calibrated",
                 )
-                plt.colorbar(sc, ax=ax, label="", orientation="horizontal", pad=0.02)
+
+                # Plot calibrated points (triangle symbols)
+                if not gdf_calib.empty:
+                    sc2 = ax.scatter(
+                        gdf_calib.geometry.x,
+                        gdf_calib.geometry.y,
+                        c=gdf_calib["value"],
+                        cmap=cmap1[metric1]["cmap"],
+                        marker="^",
+                        edgecolor="k",
+                        linewidth=1.0,
+                        s=point_size * 1.2,  # make them slightly more visible
+                        alpha=0.8,
+                        label="Calibrated",
+                    )
+
+                    # Add legend outside the plot (to the right)
+                    ax.legend(
+                        loc="upper left",  # anchor point of the legend box
+                        bbox_to_anchor=(1.05, 1),  # position relative to axes
+                        borderaxespad=0.0,  # no extra padding
+                        frameon=True,
+                        fontsize=10,
+                    )
+
+                # Colorbar from one of the scatter plots
+                plt.colorbar(sc1, ax=ax, label="", orientation="horizontal", pad=0.02)
                 ax.set_aspect(1.35)
 
                 # save plot to png
@@ -272,6 +318,81 @@ def create_spatial_map(conf: dict, data_paths: dict):
                 )
 
     logger.info(f"  Spatial maps created at: {fig_dir}")
+
+
+def set_up_figure(df1: pd.DataFrame, df2: pd.DataFrame, plot_type: str = "boxplot"):
+    """Set up a matplotlib figure with dynamic sizing based on data."""
+    # Determine if multiple subplots are needed
+    multi_plot = len(df1) > 0
+
+    # Count number of unique groups on x-axis for each subplot
+    n_groups2 = df2["lead_group"].nunique()
+    n_groups1 = df1["lead_group"].nunique()
+
+    if plot_type == "boxplot":
+        # Width per category
+        width_per_group = 0.7
+        subplot_widths = [
+            n_groups2 * width_per_group,
+            n_groups1 * width_per_group,
+        ]
+        spacing = 1 if multi_plot else 0
+        fig_width = sum(subplot_widths) + spacing
+        fig_width = max(fig_width, 6 if multi_plot else 3)
+
+    elif plot_type == "histogram":
+        # Histograms need more horizontal space
+        if multi_plot:
+            fig_width = 9  # wide figure for two subplots
+        else:
+            fig_width = 5  # single subplot
+    else:
+        # default fallback
+        fig_width = 8
+
+    # Create subplots
+    if multi_plot:
+        fig, axes = plt.subplots(
+            1, 2, figsize=(fig_width, 5), sharey=True, constrained_layout=True
+        )
+    else:
+        fig, axes = plt.subplots(
+            1, 1, figsize=(fig_width, 5), sharey=True, constrained_layout=True
+        )
+
+    # Make axes always iterable
+    if not isinstance(axes, (list, np.ndarray)):
+        axes = [axes]
+
+    return fig, axes
+
+
+def add_shared_legend(fig, axes, dataset_names, palette):
+    """Add a shared legend to the figure."""
+    # Create manual legend handles
+    handles_labels = {
+        name: Patch(color=palette[name], label=name) for name in dataset_names
+    }
+
+    # Remove axes legends if they exist
+    for ax in axes:
+        if ax.get_legend() is not None:
+            ax.get_legend().remove()
+
+    # Add shared legend to the figure
+    fig.legend(
+        handles_labels.values(),
+        handles_labels.keys(),
+        loc="upper center",
+        ncol=len(handles_labels),
+        frameon=True,
+        fontsize=12,
+        bbox_to_anchor=(0.5, 0.98),
+        borderaxespad=0.0,
+    )
+
+    # leave space for the legend
+    plt.tight_layout(rect=[0, 0, 1, 0.92])
 
 
 def create_boxplot(conf: dict, data_paths: dict):
@@ -322,35 +443,57 @@ def create_boxplot(conf: dict, data_paths: dict):
                 df1["value"], cmap1[metric1]["clim"][0], cmap1[metric1]["clim"][1]
             )
 
-        # start a new plot
-        plt.figure()
-        plt.set_loglevel("WARNING")
-        if conf1["show_outliers"]:
+        # break data into calibrated and non-calibrated subsets
+        df_calib, df_noncalib = group_df_by_location(
+            df1, conf["general"].get("calib_gages", []), "primary_location_id"
+        )
+
+        # set up figure
+        fig, axes = set_up_figure(df_calib, df_noncalib, plot_type="boxplot")
+
+        # Plot non-calibrated
+        sns.boxplot(
+            x="lead_group",
+            y="value",
+            data=df_noncalib,
+            hue="dataset",
+            hue_order=dataset_names,
+            showfliers=conf1["show_outliers"],
+            palette=palette,
+            ax=axes[0],
+        )
+        tit1 = "Non-Calibrated Locations" if len(df_calib) > 0 else "All Locations"
+        axes[0].set_title(tit1)
+        axes[0].set_ylabel(f"{metric1} ({metric_long})", fontsize=12)
+        axes[0].set_yticklabels(axes[0].get_yticklabels(), fontsize=12)
+
+        # Plot calibrated if it exists
+        if len(df_calib) > 0:
             sns.boxplot(
-                x=df1["lead_group"],
+                x="lead_group",
                 y="value",
-                data=df1,
+                data=df_calib,
                 hue="dataset",
                 hue_order=dataset_names,
-                showfliers=True,
+                showfliers=conf1["show_outliers"],
                 palette=palette,
+                ax=axes[1],
             )
-        else:
-            sns.boxplot(
-                x=df1["lead_group"],
-                y="value",
-                data=df1,
-                hue="dataset",
-                hue_order=dataset_names,
-                showfliers=False,
-                palette=palette,
-            )
-        plt.title(f"{metric1}({metric_long})")
-        plt.xlabel("Lead time (hours)" if not (df1["lead_group"] == "0").all() else "")
-        # remove x-axis ticks if only lead time 0
+            axes[1].set_title("Calibrated Locations")
+
+        # Remove x-ticks and labels from all subplots
         if (df1["lead_group"] == "0").all():
-            plt.xticks([])
-        plt.ylabel("")
+            for ax in axes:
+                ax.set_xticks([])
+                ax.set_xticklabels([])
+                ax.set_xlabel("")
+        else:
+            for ax in axes:
+                ax.set_xlabel("Lead time (hours)", fontsize=12)
+                ax.set_xticklabels(ax.get_xticklabels(), rotation=45, fontsize=12)
+
+        # Add shared legend
+        add_shared_legend(fig, axes, dataset_names, palette)
 
         # save plot to png
         fig_dir = save_plot(
@@ -420,27 +563,62 @@ def create_histogram(conf: dict, data_paths: dict):
                 df["binned"] = pd.cut(df["value"], bins=8)
             df = df.sort_values(by=["binned"])
 
-            # create histogram
-            plt.figure()
+            # convert binned column to string for plotting
+            df["binned"] = df["binned"].astype(str)
+
+            # break data into calibrated and non-calibrated subsets
+            df_calib, df_noncalib = group_df_by_location(
+                df, conf["general"].get("calib_gages", []), "primary_location_id"
+            )
+
+            # set up figure
+            fig, axes = set_up_figure(df_calib, df_noncalib, plot_type="histogram")
             plt.set_loglevel("WARNING")
+
+            # Plot non-calibrated
             ax = sns.histplot(
-                data=df,
-                x=df["binned"].astype(str),
+                data=df_noncalib,
+                x="binned",
                 hue="dataset",
                 hue_order=dataset_names,
                 multiple="dodge",
                 shrink=0.8,
                 palette=palette,
+                discrete=True,
+                ax=axes[0],
             )
+            tit1 = "Non-Calibrated Locations" if len(df_calib) > 0 else "All Locations"
+            axes[0].set_title(tit1)
+            axes[0].set_ylabel(f"{metric1} ({metric_long})", fontsize=12)
+            axes[0].set_yticklabels(axes[0].get_yticklabels(), fontsize=10)
 
-            plt.setp(ax.get_xticklabels(), rotation=30)
-            plt.title(
-                f"{metric1}({metric_long})"
-                f"{'' if lead1 == '0' else f'   lead_time={lead1}h'}"
-            )
-            plt.xlabel("")
-            plt.ylabel("Count")
-            plt.subplots_adjust(bottom=0.2)
+            if len(df_calib) > 0:
+                ax = sns.histplot(
+                    data=df_calib,
+                    x="binned",
+                    hue="dataset",
+                    hue_order=dataset_names,
+                    multiple="dodge",
+                    shrink=0.8,
+                    palette=palette,
+                    discrete=True,
+                    ax=axes[1],
+                )
+                axes[1].set_title("Calibrated Locations")
+
+            # set x-tick labels rotation and titles
+            for ax in axes:
+                plt.setp(ax.get_xticklabels(), rotation=30, fontsize=10)
+                ax.set_ylabel("Number of locations", fontsize=12)
+                ax.set_xlabel(
+                    f"{metric1} ({metric_long})"
+                    f"{'' if lead1 == '0' else f'   lead_time={lead1}h'}",
+                    fontsize=12,
+                )
+                plt.subplots_adjust(bottom=0.2)
+
+            # add shared legend
+            add_shared_legend(fig, axes, dataset_names, palette)
 
             # save plot to png
             fig_dir = save_plot(
@@ -712,6 +890,23 @@ def create_all_plots(conf: dict, data_paths: dict):
         for pt in plot_types
         if f"create_{pt}" in globals()
     }
+
+    if conf["general"].get("separate_calibrated"):
+        logger.info(
+            "  Creating plots distinguishing calibrated and regionalized locations."
+        )
+        # retrieve calibrated location IDs and add prefix 'usgs-'
+        calib_params_file = conf["file_paths"]["calib_param_file"]
+        calib_gages = (
+            read_data(calib_params_file)["gage_id"].unique().astype(str).tolist()
+        )
+        calib_gages = [f"usgs-{gid}" for gid in calib_gages]
+        conf["general"]["calib_gages"] = calib_gages
+    else:
+        logger.info(
+            "  Creating plots without distinguishing calibrated and regionalized locations."
+        )
+        conf["general"]["calib_gages"] = []
 
     for plot_type, func in plot_functions.items():
         plot_conf = conf["plots"].get(plot_type) or {}

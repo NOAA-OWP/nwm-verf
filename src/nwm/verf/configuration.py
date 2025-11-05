@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -26,25 +26,38 @@ class GeneralConfig(BaseModel):
     forecast_end_date: List[str]
     eval_start_date: Optional[List[str]] = None
     eval_end_date: Optional[List[str]] = None
+    separate_calibrated: Optional[bool] = Field(
+        default=True,
+        description="Whether to distinguish calibrated and regionalized locations in the evaluation",
+    )
 
 
 class FilePathsConfig(BaseModel):
     """Data model for the 'file_paths' section of the config file"""
 
     base_dir: Path
-    location_list_file: Optional[str] = None
+    location_list_file: Optional[Path | str] = None
     crosswalk_file: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = None
     fcst_config_file: Optional[str | Path] = None
     fcst_data_file: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = None
+    calib_param_file: Optional[Path | str] = None
     output_dir: str | Path
 
-    @model_validator(mode="after")
-    def expand_all_paths(self):
-        """Expand all paths to ensure they are absolute."""
-        for field, value in self.__dict__.items():
-            if isinstance(value, Path):
-                self.__dict__[field] = value.expanduser()
-        return self
+    # @model_validator(mode="after")
+    # def expand_all_paths(self):
+    #     """Expand all paths to ensure they are absolute."""
+    #     for field, value in self.__dict__.items():
+    #         if isinstance(value, Path):
+    #             self.__dict__[field] = value.expanduser()
+    #     return self
+
+    # @model_validator(mode="after")
+    # def expand_all_paths(self):
+    #     """Expand all paths to ensure they are absolute."""
+    #     for field, value in self.__dict__.items():
+    #         if isinstance(value, (Path, str)) and value is not None:
+    #             self.__dict__[field] = Path(value).expanduser()
+    #     return self
 
 
 class NWMForecastConfig(BaseModel):
