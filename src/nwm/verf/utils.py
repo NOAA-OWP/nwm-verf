@@ -184,9 +184,9 @@ def check_columns_dataframe(file: Path | str, columns: Set[str]):
         is_empty = pf.metadata.num_rows == 0  # More efficient than loading into pandas
 
     else:
-        msg = f"Unsupported file format: {suffix}. Supported formats are .csv and .parquet."
-        logger.error(msg)
-        raise ValueError(msg)
+        msg = f"Unsupported file format: {suffix} for checking columns in {file}. Supported formats are .csv and .parquet."
+        logger.info(msg)
+        return
 
     # raise error if the file is empty
     if is_empty:

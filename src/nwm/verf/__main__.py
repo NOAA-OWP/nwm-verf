@@ -56,11 +56,23 @@ def run_verification(conf: dict):
         with timing_block(step1):
             for dataset_idx, dataset in enumerate(conf["general"]["dataset_name"]):
                 nwm_version = conf["general"]["nwm_version"][dataset_idx]
+
+                start_date = conf["general"].get("forecast_start_date", [None])
+                end_date = conf["general"].get("forecast_end_date", [None])
+                if start_date and end_date:
+                    start_date = start_date[dataset_idx]
+                    end_date = end_date[dataset_idx]
+                else:
+                    start_date = None
+                    end_date = None
+
                 pairs = pair_data.create_pairs(
                     data_paths,
                     dataset,
                     nwm_version,
                     conf["pair_data"]["group_size"],
+                    start_date,
+                    end_date,
                     conf["pair_data"]["overwrite"],
                 )
 

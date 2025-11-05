@@ -72,6 +72,7 @@ class ProcessConfig(BaseModel):
             "gage_hydrofabric_file": {"primary_location_id", "agency", "geometry"},
             "fcst_data_file": {"Time", "sim_flow"},
             "location_list_file": {},
+            "calib_param_file": {"gage_id"},
         }
         return file_dict
 
@@ -204,6 +205,21 @@ class ProcessConfig(BaseModel):
         logger.info(f"Logging initialized with log level: {log_level}.")
         logger.info(f"Log file: {log_file}")
 
+    def _expand_path_obj(self, v: str | Path | dict) -> str | Path | dict:
+        """Recursively expand ~ for Path or string objects inside dicts."""
+        if isinstance(v, (Path, str)):
+            return Path(v).expanduser()
+        elif isinstance(v, dict):
+            return {k: self._expand_path_obj(val) for k, val in v.items()}
+        return v  # leave other types unchanged
+
+    def expand_all_paths(self):
+        """Expand all paths to ensure they are absolute."""
+        for field, value in self.config.file_paths.__dict__.items():
+            if value is not None:
+                self.config.file_paths.__dict__[field] = self._expand_path_obj(value)
+        return self
+
     def load_and_validate_yaml(self):
         """Load a YAML file and validate its structure using Pydantic."""
         try:
@@ -221,11 +237,17 @@ class ProcessConfig(BaseModel):
 
         # validate file paths
         exclude_files = set()
-        if not self.config.nwm_forecast.data_source == "ngenCERF":
+        if self.config.nwm_forecast.data_source not in ["ngenCERF", "ngenSIM"]:
             exclude_files.add("fcst_data_file")
         if self.config.general.location_list or self.config.general.assemble_domain:
             exclude_files.add("location_list_file")
+        if not self.config.general.separate_calibrated:
+            exclude_files.add("calib_param_file")
 
+        # expand all paths
+        self.expand_all_paths()
+
+        # validate paths
         paths = self.assemble_file_paths(exclude=exclude_files)
         self.validate_paths(paths)
 
