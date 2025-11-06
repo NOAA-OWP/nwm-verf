@@ -4,10 +4,10 @@ general:
   # define which of the 5 steps to run; each step can be run independently, 
   # assuming data from previous steps (from previous runs) are available for use
   steps:
-    fetch_fcst_data: false
-    fetch_obs_data: false
-    pair_data: false
-    compute_metrics: false
+    fetch_fcst_data: true
+    fetch_obs_data: true
+    pair_data: true
+    compute_metrics: true
     plot_metrics: true
 
   # user-specified name for the set of locations to carry out verification for
@@ -53,25 +53,17 @@ file_paths:
 
   # parquet files containing the crosswalk between NWM feature_id and usgs gage id
   # note a crosswalk file should be provided for each NWM version listed in 'general/nwm_version'
-  # see utils/create_crosswalk.py on how the sample crosswalk parquet was created
-  # sample file usgs_nwm30_crosswalk_all_domains.parquet includes 8866 gages
   crosswalk_file: '{base_dir}/inputs/gage_files/usgs_{nwm_version}_crosswalk_all_domains.parquet'
-
-  # gage hydrofabric file (including geometry)
-  gage_hydrofabric_file: '{base_dir}/inputs/gage_files/gage_hydrofabric_all_domains.parquet'
 
   # NWM forecast configuration file
   fcst_config_file: '{base_dir}/inputs/nwm_forecast_configuration.yaml'
-
-  # forecast data directory (must be specified when nwm_forecast.data_source is set to ngenCERF)
-  fcst_data_file: '{base_dir}/inputs/{location_set_name}/{dataset_name}/{nwm_configuration}.csv'
 
   # output directory to store all datasets and plots
   output_dir: '{base_dir}/outputs/{location_set_name}'
 
 #### configurations for retrieving NWM forecast data (typically no need to change)
 nwm_forecast:
-  data_source: GCS    # Specifies the remote location from which to fetch the data ("GCS", "NOMADS", "DSTOR", "ngenCERF")
+  data_source: GCS    # Specifies the source to retrieve the model forecast or simulation data. Currently supported options: GCS, ngenCERF, ngenSIM
   # fields below are only needed when data_source is set to "GCS"
   fetch_fcst: [true, true]  # whether to fetch the forecast data for each dataset listed in ['general']['dataset_name']  
   output_type: channel_rt
@@ -217,66 +209,4 @@ plots:
 
     # define a string that gets added to the filename of spatial map plots to avoid overwriting the existing ones (if any)
     tag:
-
-############### DONE WITH CONFIGURATIONS #######################                  
-#--------- List of currently supported metrics for teehr and nwm.eval -----------
-# both short and long names of the metrics are accepted
-#
-### supported metrics for teehr
-    # 'n_obs': 'primary_count', 
-    # 'n_mod': 'secondary_count',
-    # 'min_obs': 'primary_minimum', 
-    # 'min_mod': 'secondary_minimum', 
-    # 'max_obs': 'primary_maximum',
-    # 'max_mod': 'secondary_maximum', 
-    # 'mean_obs': 'primary_average', 
-    # 'mean_mod': 'secondary_average',
-    # 'sum_obs': 'primary_sum', 
-    # 'sum_mod': 'secondary_sum', 
-    # 'var_obs': 'primary_variance',
-    # 'var_mod': 'secondary_variance', 
-    # 'max_delta': 'max_value_delta', 
-    # 'NSE': 'nash_sutcliffe_efficiency',
-    # 'NNSE': 'nash_sutcliffe_efficiency_normalized', 
-    # 'KGE': 'kling_gupta_efficiency',
-    # 'KGE1': 'kling_gupta_efficiency_mod1', 
-    # 'KGE2': 'kling_gupta_efficiency_mod2',
-    # 'ME': 'mean_error', 
-    # 'MAE': 'mean_absolute_error', 
-    # 'MSE': 'mean_squared_error',
-    # 'RMSE': 'root_mean_squared_error',
-    # 'pt_obs': 'primary_max_value_time',
-    # 'pt_mod': 'secondary_max_value_time', 
-    # 'pt_err': 'max_value_timedelta',
-    # 'RBIAS': 'relative_bias',
-    # 'MBAIS': 'multiplicative_bias', 
-    # 'RMAE': 'mean_absolute_relative_error',
-    # 'CORR': 'pearson_correlation',
-    # 'sCORR': 'spearman_correlation',    
-    # 'R2': 'r_squared', 
-    # 'aprBIAS': 'annual_peak_relative_bias',
-
-
-##### supported metrics for nwm.eval
-    # 'CORR': 'pearson correlation',
-    # 'NSE': 'nash_sutcliffe_efficiency',
-    # 'NNSE': 'nash_sutcliffe_efficiency_normalized', 
-    # 'NSElog': "logrithmic nash_sutcliffe_efficiency",
-    # 'NSEwt': 'weighted NSE and NSElog',
-    # 'KGE': 'kling_gupta_efficiency',
-    # 'MAE': 'mean_absolute_error', 
-    # 'RMSE': 'root_mean_squared_error',
-    # 'PBIAS': 'percent_bias',
-    # 'RSR': 'RMSE_observation_std_ratio',
-    # 'HSEG_FDC': 'pbias_high_flow_FDC',
-    # 'MSEG_FDC': 'pbias_medium_flow_FDC',
-    # 'LSEG_FDC': 'pbias_low_flow_FDC',
-    # 'POD': 'probability_of_detection',
-    # 'FAR': 'false_alarm_ratio',
-    # 'CSI': 'critical_success_index',
-    # 'FBIAS': 'frequency_bias',
-    # 'PKBIAS': 'percent_peak_flow_bias',
-    # 'PKTE': 'peak_timing_error',
-    # 'EVBIAS': 'event_volume_bias',
-
 
