@@ -43,22 +43,6 @@ class FilePathsConfig(BaseModel):
     calib_param_file: Optional[Path | str] = None
     output_dir: str | Path
 
-    # @model_validator(mode="after")
-    # def expand_all_paths(self):
-    #     """Expand all paths to ensure they are absolute."""
-    #     for field, value in self.__dict__.items():
-    #         if isinstance(value, Path):
-    #             self.__dict__[field] = value.expanduser()
-    #     return self
-
-    # @model_validator(mode="after")
-    # def expand_all_paths(self):
-    #     """Expand all paths to ensure they are absolute."""
-    #     for field, value in self.__dict__.items():
-    #         if isinstance(value, (Path, str)) and value is not None:
-    #             self.__dict__[field] = Path(value).expanduser()
-    #     return self
-
 
 class NWMForecastConfig(BaseModel):
     """Data model for the 'nwm_forecast' section of the config file"""
