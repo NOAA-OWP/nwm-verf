@@ -26,15 +26,16 @@ classifiers = [
 ]
 dependencies = [
     "dask",
-    "geopandas",
+    "geopandas~=1.1.1",             # Match ngen-forcing
     "cartopy",
     "matplotlib",
-    "pandas",
+    "pandas~=2.3.3",                # Match ngen-forcing
     "seaborn",
     "distributed",
     "pydantic",
-    "numpy<2",
+    "numpy~=1.26.4",                # Match ngen-forcing
     "fastparquet",
+    "shapely~=2.1.2",               # Match ngen-forcing
     "tenacity",
     "teehr @ git+https://github.com/RTIInternational/teehr@1204e014fd9e3b320d6ee5c8eea04efc524ce0a7",
 ]
