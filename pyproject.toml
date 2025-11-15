@@ -37,7 +37,8 @@ dependencies = [
     "fastparquet",
     "shapely~=2.1.2",               # Match ngen-forcing
     "tenacity",
-    "teehr @ git+https://github.com/RTIInternational/teehr@1204e014fd9e3b320d6ee5c8eea04efc524ce0a7",
+    # teehr 7a2b8da == tag v0.5.2
+    "teehr @ git+https://github.com/RTIInternational/teehr@7a2b8da64bf12d074b7d7b44d6d5c89e9a66d8c5",
 ]
 
 [tool.setuptools]
