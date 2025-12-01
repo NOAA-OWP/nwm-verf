@@ -33,7 +33,7 @@ dependencies = [
     "seaborn",
     "distributed",
     "pydantic",
-    "netCDF4",
+    "netCDF4==1.6.3",
     "numpy<2",
     "fastparquet",
     "tenacity",
