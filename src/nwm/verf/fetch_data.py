@@ -507,7 +507,7 @@ def extract_flow_for_gages(
     )
 
     # Open NetCDF
-    ds = xr.open_dataset(nc_file, backend="netcdf4")
+    ds = xr.open_dataset(nc_file, engine="netcdf4")
 
     # Select only the feature_ids in the crosswalk
     feature_ids = list(feature_to_gage.keys())
