@@ -248,7 +248,7 @@ def create_spatial_map(conf: dict, data_paths: dict):
                 ax.set_title(
                     f"{metric1} ({metric_long}), "
                     f"{'' if lead1 == '0' else f'lead={lead1}h, '}"
-                    f"dataset={case1}",
+                    f"{case1}",
                     fontsize=16,
                     pad=16,
                 )
@@ -304,12 +304,24 @@ def create_spatial_map(conf: dict, data_paths: dict):
                     )
 
                     # Add legend outside the plot (to the right)
+                    # ax.legend(
+                    #     loc="upper left",  # anchor point of the legend box
+                    #     bbox_to_anchor=(0.95, 1),  # position relative to axes
+                    #     borderaxespad=0.0,  # no extra padding
+                    #     frameon=True,
+                    #     fontsize=12,
+                    # )
+
+                    # Add legend under the colorbar to avoid being clipped
                     ax.legend(
-                        loc="upper left",  # anchor point of the legend box
-                        bbox_to_anchor=(1.05, 1),  # position relative to axes
-                        borderaxespad=0.0,  # no extra padding
+                        loc="upper center",
+                        bbox_to_anchor=(
+                            0.5,
+                            -0.25,
+                        ),  # centered, below the axes & colorbar
                         frameon=True,
-                        fontsize=10,
+                        fontsize=12,
+                        ncol=2,
                     )
 
                 # Colorbar from one of the scatter plots
@@ -520,7 +532,12 @@ def create_boxplot(conf: dict, data_paths: dict):
         else:
             for ax in axes:
                 ax.set_xlabel("Lead time (hours)", fontsize=12)
-                ax.set_xticklabels(ax.get_xticklabels(), rotation=45, fontsize=10)
+                ax.set_xticklabels(ax.get_xticklabels(), rotation=45, fontsize=12)
+
+        # set y-axis label font size
+        for ax in axes:
+            ax.set_ylabel(f"{metric1} ({metric_long})", fontsize=12)
+            ax.tick_params(axis="y", labelsize=12)
 
         # Add shared legend
         add_shared_legend(fig, axes, dataset_names, palette)
@@ -592,10 +609,16 @@ def create_histogram(conf: dict, data_paths: dict):
 
             # bin the data to create customized histograms
             if len(bins1) > 0:
-                df["binned"] = pd.cut(df["value"], bins=bins1)
+                df["binned"] = pd.cut(df["value"], bins=bins1, include_lowest=True)
             else:
-                df["binned"] = pd.cut(df["value"], bins=8)
+                df["binned"] = pd.cut(df["value"], bins=8, include_lowest=True)
             df = df.sort_values(by=["binned"])
+
+            # check if any nan values after binning
+            if df["binned"].isnull().any():
+                logger.warning(
+                    f"Some binned values are NaN for metric {metric1} at lead time {lead1}. Check bin edges."
+                )
 
             # convert binned column to string for plotting
             df["binned"] = df["binned"].astype(str)
@@ -650,6 +673,7 @@ def create_histogram(conf: dict, data_paths: dict):
             for ax in axes:
                 plt.setp(ax.get_xticklabels(), rotation=30, fontsize=10)
                 ax.set_ylabel("Number of locations", fontsize=12)
+                ax.tick_params(axis="y", labelsize=12)
                 ax.set_xlabel(
                     f"{metric1} ({metric_long})"
                     f"{'' if lead1 == '0' else f'   lead={lead1}h'}",
