@@ -361,16 +361,19 @@ def set_up_figure(df1: pd.DataFrame, df2: pd.DataFrame, plot_type: str = "boxplo
     n_groups2 = df2["lead_group"].nunique()
     n_groups1 = df1["lead_group"].nunique()
 
+    # number of datasets
+    n_datasets = df2["dataset"].nunique()
+
     if plot_type == "boxplot":
         # Width per category
-        width_per_group = 0.7
+        width_per_group = 0.7 if n_datasets <= 3 else 1.0
         subplot_widths = [
             n_groups2 * width_per_group,
             n_groups1 * width_per_group,
         ]
         spacing = 1 if multi_plot else 0
         fig_width = sum(subplot_widths) + spacing
-        fig_width = max(fig_width, 6 if multi_plot else 3)
+        fig_width = max(fig_width, 8 if multi_plot else 4)
 
     elif plot_type == "histogram":
         # Histograms need more horizontal space
