@@ -50,6 +50,8 @@ def create_time_sequence(
 ) -> list[pd.Timestamp]:
     start_dt = pd.to_datetime(start_date) + pd.Timedelta(hours=start_hour)
     end_dt = pd.to_datetime(end_date) + pd.Timedelta(hours=end_hour)
+    if start_dt > end_dt:  # swap if start is after end
+        start_dt, end_dt = end_dt, start_dt
 
     return pd.date_range(start=start_dt, end=end_dt, freq=f"{freq_hour}H").to_list()
 

@@ -50,7 +50,7 @@ def filter_by_lead_metric(
     """Filter the metric DataFrame by lead times and metrics."""
     # first filter by lead times
     fc = ForecastConfig(fcst_config_file)
-    leads0, missing_leads = fc.interpret_lead_times(conf["lead_times"], nwm_config)
+    leads0, _, _ = fc.interpret_lead_times(conf["lead_times"], nwm_config)
 
     leads = df_metrics["lead_group"].unique()
     leads1 = [l1 for l1 in leads0 if l1 not in leads]
@@ -737,12 +737,15 @@ def create_time_series(conf: dict, data_paths: dict):
 
     # Plot
     fig, ax = plt.subplots(figsize=(10, 6))
+    n_points = len(merged_df)
     ax.plot(
         merged_df["value_time"],
         merged_df["primary_value"],
         label="Observed",
         color="black",
         linewidth=1.2,
+        marker="o" if n_points < 30 else None,
+        linestyle="-" if n_points >= 2 else "None",
     )
 
     for dataset in conf["general"]["dataset_name"]:
@@ -750,6 +753,8 @@ def create_time_series(conf: dict, data_paths: dict):
             merged_df["value_time"],
             merged_df[dataset],
             label=dataset,
+            marker="o" if n_points < 30 else None,
+            linestyle="-" if n_points >= 2 else "None",
         )
 
     ax.set_xlabel("Time", fontsize=12)

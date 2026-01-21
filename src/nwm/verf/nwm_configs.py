@@ -128,7 +128,10 @@ class ForecastConfig:
             return ["0"], []
 
         fcst_win, timestep = self.get_fcst_window_timestep(fcst_config)
-        all_leads = list(np.arange(timestep, fcst_win + timestep, timestep))
+        if fcst_win >= 0:
+            all_leads = list(np.arange(timestep, fcst_win + timestep, timestep))
+        else:
+            all_leads = list(np.arange(fcst_win + timestep, timestep, timestep))
 
         # check if all_leads covered by leads
         missing_leads = []
@@ -137,7 +140,10 @@ class ForecastConfig:
             missing_leads = [l1 for l1 in all_leads if l1 not in leads]
             existing_leads = [l1 for l1 in all_leads if l1 in leads]
 
-        lead_times = [str(l1) for l1 in lead_times]  # ensure all are strings
+        existing_leads = [
+            str(l1) if l1 >= 0 else "m" + str(abs(l1)) for l1 in existing_leads
+        ]  # ensure all are strings, prepend 'm' for negative leads
+
         if "all" in lead_times:
             lead_times = [str(i) for i in existing_leads] + [
                 x for x in lead_times if x != "all"
@@ -147,4 +153,4 @@ class ForecastConfig:
                 x for x in lead_times if x != "all_aggregated"
             ]
 
-        return lead_times, missing_leads
+        return lead_times, missing_leads, timestep
