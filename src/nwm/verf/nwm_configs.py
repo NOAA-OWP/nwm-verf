@@ -125,7 +125,7 @@ class ForecastConfig:
 
         """
         if fcst_config == "ngen_simulation":  # for simulation, only lead time 0
-            return ["0"], []
+            return ["0"], [], 0
 
         fcst_win, timestep = self.get_fcst_window_timestep(fcst_config)
         if fcst_win >= 0:
