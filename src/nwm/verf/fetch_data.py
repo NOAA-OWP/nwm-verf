@@ -270,7 +270,7 @@ def retrieve_fcsts_ngencerf(conf: dict, data_paths: dict):
     win_size, time_step, reference_time = get_fcst_info(conf)
 
     # Define time window for forecasts
-    if win_size > 0:
+    if win_size >= 0:
         start_time = reference_time + pd.Timedelta(hours=time_step)
         end_time = start_time + pd.Timedelta(hours=win_size - time_step).round("s")
     else:
