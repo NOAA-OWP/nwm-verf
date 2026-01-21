@@ -181,8 +181,20 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
             timestep1 = 1
         else:
             fcst_win1, timestep1, reference_time = get_fcst_info(conf)
-        end_date = pd.Timestamp(end_date) + pd.Timedelta(fcst_win1 + 24, unit="hours")
-        end_date = end_date.strftime("%Y-%m-%d %H:%M:%S")
+
+        # adjust start/end date based on forecast window
+        if fcst_win1 < 0:
+            start_date = pd.Timestamp(start_date) + pd.Timedelta(
+                fcst_win1, unit="hours"
+            )
+            start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            end_date = pd.Timestamp(end_date) + pd.Timedelta(
+                fcst_win1 + 24, unit="hours"
+            )
+            end_date = end_date.strftime("%Y-%m-%d %H:%M:%S")
+
+        # create the list of dates required
         dates = dates + create_time_sequence(
             start_date, end_date, freq_hour=24, start_hour=0, end_hour=23
         )
@@ -260,6 +272,8 @@ def retrieve_fcsts_ngencerf(conf: dict, data_paths: dict):
     # Define time window for forecasts
     start_time = reference_time + pd.Timedelta(hours=time_step)
     end_time = start_time + pd.Timedelta(hours=win_size - time_step).round("s")
+    if start_time > end_time:  # swap if start is after end
+        start_time, end_time = end_time, start_time
 
     # read forecast data from file for each dataset
     for dataset in conf["general"]["dataset_name"]:
