@@ -75,7 +75,7 @@ class PairDataConfig(BaseModel):
 
 
 class LeadTimesMixin(BaseModel):
-    lead_times: List[str]
+    lead_times: Optional[List[str]] = None
 
     @field_validator("lead_times", mode="before")
     @classmethod
