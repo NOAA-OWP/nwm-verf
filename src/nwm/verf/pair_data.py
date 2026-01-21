@@ -4,6 +4,8 @@ from datetime import datetime
 from pathlib import Path
 
 import duckdb
+import numpy as np
+import pandas as pd
 from teehr.classes.duckdb_database import DuckDBDatabase
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,40 @@ def join_time_series(data_paths: dict, dataset: str, nwm_version: str) -> Path:
     )
 
     return db_filepath
+
+
+def replace_values_with_nan(
+    df,
+    colnames: list[str] | str,
+    replace_values: list[float],
+    tol: float = 1e-12,
+):
+    """Replace specified values in DataFrame with NaN.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    colnames : list of str or str
+        List of column names to check for replacement.
+    replace_values : list of float
+        List of values to be replaced with NaN.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with specified values replaced by NaN.
+
+    """
+    if isinstance(colnames, str):
+        colnames = [colnames]
+
+    for val in replace_values:
+        df[colnames] = df[colnames].where(
+            ~np.isclose(df[colnames], val, atol=tol), np.nan
+        )
+
+    return df
 
 
 def export_location_groups_with_lead_time(
@@ -112,6 +148,19 @@ def export_location_groups_with_lead_time(
         TO '{group_file_path}' (FORMAT PARQUET)
         """
         con.execute(query)
+
+        # replace specified values with NaN in the exported parquet file
+        replace_values_with_nan(
+            df=pd.read_parquet(group_file_path),
+            colnames=["primary_value", "secondary_value"],
+            replace_values=[
+                -9999.0,
+                -99999.0,
+                -999999.0,
+                -28316.818359375,
+            ],  # -28316.818359375 is -999999.0 in cfs
+        ).to_parquet(group_file_path, index=False)
+
     con.close()
 
 

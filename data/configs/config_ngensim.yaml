@@ -14,20 +14,20 @@ general:
   nwm_configuration: ngen_simulation    
   dataset_name: [gower, kmeans] # user-specified name of datasets (e.g., formualtion or algorithm name)
   nwm_version: [ngen, ngen] # list of NWM versions; must have the same length as 'dataset_name'
-  forecast_start_date: ['2021-10-01 00:00:00', '2021-10-01 00:00:00'] # list of start dates for simulation; must be same length as 'dataset_name'
-  forecast_end_date: ['2021-11-01 00:00:00', '2021-11-01 00:00:00'] # list of end dates for simulation; must be same length as 'dataset_name'
-  eval_start_date: ['2021-10-03 00:00:00', '2021-10-03 00:00:00'] # start date for evaluation period, only used for ngenSIM
-  eval_end_date: ['2021-11-01 00:00:00', '2021-11-01 00:00:00'] # end date for evaluation period, only used for ngenSIM
+  forecast_start_date: ['2022-10-01 00:00:00', '2022-10-01 00:00:00'] # list of start dates for simulation; must be same length as 'dataset_name'
+  forecast_end_date: ['2022-10-01 10:00:00', '2022-10-01 10:00:00'] # list of end dates for simulation; must be same length as 'dataset_name'
+  eval_start_date: ['2022-10-01 03:00:00', '2022-10-01 03:00:00'] # start date for evaluation period, only used for ngenSIM
+  eval_end_date: ['2022-10-01 10:00:00', '2022-10-01 10:00:00'] # end date for evaluation period, only used for ngenSIM
   separate_calibrated: true # whether to distinguish calibrated and regionalized locations in the evaluation
 
 #### configurations for various file paths
 file_paths:
-  base_dir: ~/repos/nwm-verf/data/ # root directory to store data/outputs for verification
+  base_dir: /ngen-app/nwm-verf/data/ # root directory to store data/outputs for verification
   location_list_file: '{base_dir}/inputs/regionalization/gage_list_conus_{location_set_name}.csv' # text file containing list of usgs gage IDs (one gage ID per line)
   #gage_hydrofabric_file: '{base_dir}/inputs/gage_files/gage_hydrofabric_all_domains.parquet' # gage hydrofabric file (including geometry)
   crosswalk_file: '{base_dir}/inputs/regionalization/usgs_{nwm_version}_crosswalk_{domain}.parquet' # crosswalk file mapping gage IDs to NWM/ngen link IDs
-  fcst_data_file: '~/repos/nwm-region-mgr/data/regionalization/{dataset_name}/{location_set_name}/Output/troute_output_{forecast_start_date}.nc' # forecast data directory (must be specified when nwm_forecast.data_source is set to ngenCERF)
-  calib_param_file: '~/repos/nwm-region-mgr/data/inputs/pseudo_calib_params/sampled_params_{domain}.csv' # calibration parameters file (used when separate_calibrated is True); must have column 'gage_id'
+  fcst_data_file: '/ngen-app/nwm-region-mgr/data/outputs/ngen/regionalization/{dataset_name}/{location_set_name}/Output/troute_output_{forecast_start_date}.nc' # forecast data directory (must be specified when nwm_forecast.data_source is set to ngenCERF)
+  calib_param_file: '/ngen-app/nwm-region-mgr/data/inputs/region/pseudo_calib_params/sampled_params_{domain}.csv' # calibration parameters file (used when separate_calibrated is True); must have column 'gage_id'
   output_dir: '{base_dir}/outputs/{location_set_name}' # output directory to store all datasets, metrics and plots
 
 nwm_forecast:
