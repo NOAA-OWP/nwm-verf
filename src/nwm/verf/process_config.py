@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
@@ -206,21 +207,6 @@ class ProcessConfig(BaseModel):
         logger.info(f"Logging initialized with log level: {log_level}.")
         logger.info(f"Log file: {log_file}")
 
-    # def _expand_path_obj(self, v: str | Path | dict) -> str | Path | dict:
-    #     """Recursively expand ~ for Path or string objects inside dicts."""
-    #     if isinstance(v, (Path, str)):
-    #         return Path(v).expanduser()
-    #     elif isinstance(v, dict):
-    #         return {k: self._expand_path_obj(val) for k, val in v.items()}
-    #     return v  # leave other types unchanged
-
-    # def expand_all_paths(self):
-    #     """Expand all paths to ensure they are absolute."""
-    #     for field, value in self.config.file_paths.__dict__.items():
-    #         if value is not None:
-    #             self.config.file_paths.__dict__[field] = self._expand_path_obj(value)
-    #     return self
-
     def _expand_user(self, val: str | Path) -> Path:
         """Expand user home directory and environment variables in a file path."""
         s = str(val)
@@ -289,8 +275,7 @@ class ProcessConfig(BaseModel):
         if not self.config.general.separate_calibrated:
             exclude_files.add("calib_param_file")
 
-        # expand all paths
-        # self.expand_all_paths()
+        # expand all paths (with ~ or environment variables)
         self._expand_user_file_paths(self.config)
 
         # validate paths
