@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
@@ -205,20 +206,64 @@ class ProcessConfig(BaseModel):
         logger.info(f"Logging initialized with log level: {log_level}.")
         logger.info(f"Log file: {log_file}")
 
-    def _expand_path_obj(self, v: str | Path | dict) -> str | Path | dict:
-        """Recursively expand ~ for Path or string objects inside dicts."""
-        if isinstance(v, (Path, str)):
-            return Path(v).expanduser()
-        elif isinstance(v, dict):
-            return {k: self._expand_path_obj(val) for k, val in v.items()}
-        return v  # leave other types unchanged
+    # def _expand_path_obj(self, v: str | Path | dict) -> str | Path | dict:
+    #     """Recursively expand ~ for Path or string objects inside dicts."""
+    #     if isinstance(v, (Path, str)):
+    #         return Path(v).expanduser()
+    #     elif isinstance(v, dict):
+    #         return {k: self._expand_path_obj(val) for k, val in v.items()}
+    #     return v  # leave other types unchanged
 
-    def expand_all_paths(self):
-        """Expand all paths to ensure they are absolute."""
-        for field, value in self.config.file_paths.__dict__.items():
-            if value is not None:
-                self.config.file_paths.__dict__[field] = self._expand_path_obj(value)
-        return self
+    # def expand_all_paths(self):
+    #     """Expand all paths to ensure they are absolute."""
+    #     for field, value in self.config.file_paths.__dict__.items():
+    #         if value is not None:
+    #             self.config.file_paths.__dict__[field] = self._expand_path_obj(value)
+    #     return self
+
+    def _expand_user(self, val: str | Path) -> Path:
+        """Expand user home directory and environment variables in a file path."""
+        s = str(val)
+
+        user = os.environ.get("LOGNAME") or os.environ.get("USER")
+        if user:
+            user = user.split("@", 1)[0]
+            s = re.sub(r"\$USER\b", user, s)
+
+        s = os.path.expandvars(s)
+        s = os.path.expanduser(s)
+
+        return str(s)
+
+    def _expand_user_file_paths(self, obj) -> None:
+        if isinstance(obj, BaseModel):
+            for name in obj.__class__.model_fields:
+                val = getattr(obj, name)
+                new_val = self._expand_user_file_paths(val)
+                if new_val is not val:
+                    setattr(obj, name, new_val)
+
+        elif isinstance(obj, dict):
+            for k, v in obj.items():
+                new_v = self._expand_user_file_paths(v)
+                if new_v is not v:
+                    obj[k] = new_v
+
+        elif isinstance(obj, list):
+            for i, v in enumerate(obj):
+                new_v = self._expand_user_file_paths(v)
+                if new_v is not v:
+                    obj[i] = new_v
+
+        elif isinstance(obj, tuple):
+            return tuple(self._expand_user_file_paths(v) for v in obj)
+
+        elif isinstance(obj, (str, Path)):
+            s = str(obj)
+            if any(x in s for x in ("~", "$")):
+                return self._expand_user(s)
+
+        return obj
 
     def load_and_validate_yaml(self):
         """Load a YAML file and validate its structure using Pydantic."""
@@ -245,7 +290,8 @@ class ProcessConfig(BaseModel):
             exclude_files.add("calib_param_file")
 
         # expand all paths
-        self.expand_all_paths()
+        # self.expand_all_paths()
+        self._expand_user_file_paths(self.config)
 
         # validate paths
         paths = self.assemble_file_paths(exclude=exclude_files)
