@@ -1,6 +1,7 @@
 import gc
 import glob
 import os
+import sys
 import warnings
 from pathlib import Path
 
@@ -67,15 +68,40 @@ def check_existing_obs_data(obs_dir: str | Path) -> list:
     return dates0
 
 
-def check_missing_obs_data(
-    obs_dir: str | Path, conf: dict, gages: list
-) -> list[pd.Timestamp]:
+def check_missing_obs_data(obs_dir: str | Path, conf: dict, gages: list):
     """Check for missing observation data in the specified directory."""
     # Get existing observation dates
-    parquet_files = glob.glob(str(obs_dir) + "/*.parquet")
     df = pd.DataFrame()
+    parquet_files = glob.glob(str(obs_dir) + "/*.parquet")
     for p in parquet_files:
         df = pd.concat([df, pd.read_parquet(p)], ignore_index=True)
+
+    # If no observation data is found, log warning and exit
+    if df.empty:
+        max_show = 5
+        gages_list = list(gages)
+        if len(gages_list) > max_show:
+            shown = gages_list[:max_show]
+            msg = (
+                f"No observation data is available for gages {shown} "
+                f"(showing first {max_show} of {len(gages_list)})."
+                " Verification cannot proceed. Exit."
+            )
+        else:
+            msg = (
+                f"No observation data is available for gages {gages_list}."
+                " Verification cannot proceed. Exit."
+            )
+
+        logger.warning(msg)
+        sys.exit(0)
+
+    if "value_time" not in df.columns:
+        msg = f"'value_time' column not found in observation data in {obs_dir}."
+        logger.error(msg)
+        raise ValueError(msg)
+
+    df["value_time"] = pd.to_datetime(df["value_time"])
     existing_dates = df["value_time"].unique().tolist()
 
     # Get required observation dates
@@ -97,7 +123,7 @@ def check_missing_obs_data(
         required_dates = create_time_sequence(start_date, end_date, freq_hour=time_step)
 
         # Check for missing data. For ngenCERF (single gage), check by dates; otherwise, check by gages
-        if conf["nwm_forecast"]["data_source"][i1] == "ngenCERF":
+        if conf["nwm_forecast"]["data_source"] == "ngenCERF":
             # Check for missing dates
             missing_dates = [d for d in required_dates if d not in existing_dates]
             if missing_dates:
