@@ -708,9 +708,9 @@ def create_time_series(conf: dict, data_paths: dict):
     for dataset in conf["general"]["dataset_name"]:
         file = data_paths["joined"].get(dataset, None)
         if file is None or not Path(file).exists():
-            msg = f"File not found for dataset {dataset}: {file}"
-            logger.error(msg)
-            raise FileNotFoundError(msg)
+            msg = f"Paired data file not found for dataset {dataset}: {file}. Cannot create time series plot."
+            logger.warning(msg)
+            continue
 
         df = pd.read_parquet(file)[
             ["value_time", "primary_value", "secondary_value", "measurement_unit"]
@@ -731,6 +731,10 @@ def create_time_series(conf: dict, data_paths: dict):
                 df[["value_time", dataset]],
                 on="value_time",
             )
+
+    if merged_df is None or merged_df.empty:
+        logger.error("No data available to create time series plot.")
+        return
 
     # Ensure datetime
     merged_df["value_time"] = pd.to_datetime(merged_df["value_time"])

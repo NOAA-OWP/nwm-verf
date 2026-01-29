@@ -1,5 +1,6 @@
 import logging
 import math
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -17,6 +18,18 @@ def join_time_series(data_paths: dict, dataset: str, nwm_version: str) -> Path:
     primary_data_files = f"{str(data_paths.get('obs'))}/*.parquet"
     secondary_data_files = f"{str(data_paths.get('fcst_link')[dataset])}/*.parquet"
     crosswalk_file = f"{str(data_paths.get('crosswalk')[nwm_version])}"
+
+    # make sure input files exist
+    primary_files = list(Path(data_paths.get("obs")).glob("*.parquet"))
+    if len(primary_files) == 0:
+        msg = f"No observation data files found in {data_paths.get('obs')}. Verification cannot proceed. Exit."
+        logger.warning(msg)
+        sys.exit(0)
+    secondary_files = list(Path(data_paths.get("fcst_link")[dataset]).glob("*.parquet"))
+    if len(secondary_files) == 0:
+        msg = f"No forecast data files found in {data_paths.get('fcst_link')[dataset]}. Verification cannot proceed. Exit."
+        logger.warning(msg)
+        sys.exit(0)
 
     # If there is an existing database, delete it and create a new one.
     db_filepath = Path(output_dir, "teehr.db")
