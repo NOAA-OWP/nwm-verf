@@ -826,7 +826,10 @@ def create_metric_table(conf: dict, data_paths: dict):
     n_groups = len(metric_groups)
 
     # Create subplots for each table
-    fig, axes = plt.subplots(n_groups, 1, figsize=(9, 1.2 * n_groups))
+    max_form_len = df_metrics["Formulation"].str.len().max()
+    fig, axes = plt.subplots(
+        n_groups, 1, figsize=(9 + max_form_len * 0.1, 1.2 * n_groups)
+    )
 
     if n_groups == 1:  # if only one group, axes is not iterable
         axes = [axes]
