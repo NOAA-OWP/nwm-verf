@@ -263,6 +263,9 @@ class ProcessConfig(BaseModel):
         except Exception as e:
             raise Exception(f"Error loading YAML file: {e}")
 
+        # expand all paths (with ~ or environment variables)
+        self._expand_user_file_paths(self.config)
+
         # Substitute placeholders in the config
         self.substitute_placeholders()
 
@@ -274,9 +277,6 @@ class ProcessConfig(BaseModel):
             exclude_files.add("location_list_file")
         if not self.config.general.separate_calibrated:
             exclude_files.add("calib_param_file")
-
-        # expand all paths (with ~ or environment variables)
-        self._expand_user_file_paths(self.config)
 
         # validate paths
         paths = self.assemble_file_paths(exclude=exclude_files)
