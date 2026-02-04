@@ -287,6 +287,11 @@ def calc_metrics(conf: dict, data_paths: dict):
             pair_files = list(pair_path.parent.glob(f"{pair_path.stem}*.parquet"))
             # remove pair_files containing 'temp' in the name
             pair_files = [pf for pf in pair_files if "temp" not in pf.name]
+            if len(pair_files) == 0:
+                logger.warning(
+                    f"  No paired data files found for dataset {dataset} at {pair_path.parent}. Skipping metric calculation."
+                )
+
             for i1, pair_file in enumerate(pair_files):
                 if len(pair_files) > 1:
                     logger.info(f"  Calculating metrics for {dataset} group {i1} ...")
