@@ -837,10 +837,20 @@ def create_metric_table(conf: dict, data_paths: dict):
     for ax, group in zip(axes, metric_groups.keys()):
         ax.axis("off")  # hide axis
 
-        # Round values to 2 digits
+        # Round values to 2 digits and format large numbers in scientific notation
+        def fmt_value(x):
+            if isinstance(x, (int, float, np.floating)):
+                if abs(x) >= 1e4:
+                    return f"{x:.2e}"  # scientific notation for large numbers
+                else:
+                    return f"{x:.2f}"  # standard float with 2 decimals
+            return x
+
         cols = ["Formulation"] + metric_groups[group]
         cols = [c1 for c1 in cols if c1 in df_metrics.columns]
-        cell_values = df_metrics[cols].round(2).values
+
+        display_df = df_metrics[cols].copy().applymap(fmt_value)
+        cell_values = display_df.values
 
         table = ax.table(
             cellText=cell_values,

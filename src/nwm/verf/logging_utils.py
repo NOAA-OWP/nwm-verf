@@ -100,3 +100,12 @@ def setup_logging(
     logging.getLogger("distributed").setLevel(logging.WARNING)
     logging.getLogger("dask").setLevel(logging.WARNING)
     logging.getLogger("tornado.application").setLevel(logging.ERROR)
+
+    class DaskHeartbeatFilter(logging.Filter):
+        def filter(self, record):
+            return (
+                "Failed to communicate with scheduler during heartbeat"
+                not in record.getMessage()
+            )
+
+    logging.getLogger("distributed.worker").addFilter(DaskHeartbeatFilter())
