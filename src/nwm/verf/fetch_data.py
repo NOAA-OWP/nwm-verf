@@ -5,6 +5,7 @@ import sys
 import warnings
 from pathlib import Path
 
+import aiohttp
 import pandas as pd
 import teehr.loading.nwm.nwm_points as tlp
 import xarray as xr
@@ -156,15 +157,25 @@ def check_missing_obs_data(obs_dir: str | Path, conf: dict, gages: list):
 def safe_fetch_usgs(
     site_codes: list, dates: list, conf: dict, out_dir: str, hourly: bool = True
 ):
-    usgs_to_parquet(
-        sites=site_codes,
-        start_date=min(dates),
-        end_date=max(dates) + pd.Timedelta(hours=23),
-        output_parquet_dir=out_dir,
-        chunk_by=conf["chunk_by"],
-        filter_to_hourly=hourly,
-        overwrite_output=conf["overwrite_output"],
-    )
+    try:
+        usgs_to_parquet(
+            sites=site_codes,
+            start_date=min(dates),
+            end_date=max(dates) + pd.Timedelta(hours=23),
+            output_parquet_dir=out_dir,
+            chunk_by=conf["chunk_by"],
+            filter_to_hourly=hourly,
+            overwrite_output=conf["overwrite_output"],
+        )
+    except aiohttp.client_exceptions.ContentTypeError as e:
+        raise RuntimeError(
+            "USGS request returned non-JSON response.\n"
+            f"Sites: {site_codes}\n"
+            f"Date range: {min(dates)} → {max(dates)}\n"
+            f"Hourly: {hourly}\n"
+            "This often means the USGS service returned an HTML error page "
+            "(bad parameters, rate limit, or service outage)."
+        ) from e
 
 
 def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
