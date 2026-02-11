@@ -50,7 +50,7 @@ def filter_by_lead_metric(
     """Filter the metric DataFrame by lead times and metrics."""
     # first filter by lead times
     fc = ForecastConfig(fcst_config_file)
-    leads0, missing_leads = fc.interpret_lead_times(conf["lead_times"], nwm_config)
+    leads0, _, _ = fc.interpret_lead_times(conf["lead_times"], nwm_config)
 
     leads = df_metrics["lead_group"].unique()
     leads1 = [l1 for l1 in leads0 if l1 not in leads]
@@ -248,7 +248,7 @@ def create_spatial_map(conf: dict, data_paths: dict):
                 ax.set_title(
                     f"{metric1} ({metric_long}), "
                     f"{'' if lead1 == '0' else f'lead={lead1}h, '}"
-                    f"dataset={case1}",
+                    f"{case1}",
                     fontsize=16,
                     pad=16,
                 )
@@ -304,12 +304,24 @@ def create_spatial_map(conf: dict, data_paths: dict):
                     )
 
                     # Add legend outside the plot (to the right)
+                    # ax.legend(
+                    #     loc="upper left",  # anchor point of the legend box
+                    #     bbox_to_anchor=(0.95, 1),  # position relative to axes
+                    #     borderaxespad=0.0,  # no extra padding
+                    #     frameon=True,
+                    #     fontsize=12,
+                    # )
+
+                    # Add legend under the colorbar to avoid being clipped
                     ax.legend(
-                        loc="upper left",  # anchor point of the legend box
-                        bbox_to_anchor=(1.05, 1),  # position relative to axes
-                        borderaxespad=0.0,  # no extra padding
+                        loc="upper center",
+                        bbox_to_anchor=(
+                            0.5,
+                            -0.25,
+                        ),  # centered, below the axes & colorbar
                         frameon=True,
-                        fontsize=10,
+                        fontsize=12,
+                        ncol=2,
                     )
 
                 # Colorbar from one of the scatter plots
@@ -349,16 +361,19 @@ def set_up_figure(df1: pd.DataFrame, df2: pd.DataFrame, plot_type: str = "boxplo
     n_groups2 = df2["lead_group"].nunique()
     n_groups1 = df1["lead_group"].nunique()
 
+    # number of datasets
+    n_datasets = df2["dataset"].nunique()
+
     if plot_type == "boxplot":
         # Width per category
-        width_per_group = 0.7
+        width_per_group = 0.7 if n_datasets <= 3 else 1.0
         subplot_widths = [
             n_groups2 * width_per_group,
             n_groups1 * width_per_group,
         ]
         spacing = 1 if multi_plot else 0
         fig_width = sum(subplot_widths) + spacing
-        fig_width = max(fig_width, 6 if multi_plot else 3)
+        fig_width = max(fig_width, 8 if multi_plot else 4)
 
     elif plot_type == "histogram":
         # Histograms need more horizontal space
@@ -520,7 +535,12 @@ def create_boxplot(conf: dict, data_paths: dict):
         else:
             for ax in axes:
                 ax.set_xlabel("Lead time (hours)", fontsize=12)
-                ax.set_xticklabels(ax.get_xticklabels(), rotation=45, fontsize=10)
+                ax.set_xticklabels(ax.get_xticklabels(), rotation=45, fontsize=12)
+
+        # set y-axis label font size
+        for ax in axes:
+            ax.set_ylabel(f"{metric1} ({metric_long})", fontsize=12)
+            ax.tick_params(axis="y", labelsize=12)
 
         # Add shared legend
         add_shared_legend(fig, axes, dataset_names, palette)
@@ -592,10 +612,16 @@ def create_histogram(conf: dict, data_paths: dict):
 
             # bin the data to create customized histograms
             if len(bins1) > 0:
-                df["binned"] = pd.cut(df["value"], bins=bins1)
+                df["binned"] = pd.cut(df["value"], bins=bins1, include_lowest=True)
             else:
-                df["binned"] = pd.cut(df["value"], bins=8)
+                df["binned"] = pd.cut(df["value"], bins=8, include_lowest=True)
             df = df.sort_values(by=["binned"])
+
+            # check if any nan values after binning
+            if df["binned"].isnull().any():
+                logger.warning(
+                    f"Some binned values are NaN for metric {metric1} at lead time {lead1}. Check bin edges."
+                )
 
             # convert binned column to string for plotting
             df["binned"] = df["binned"].astype(str)
@@ -650,6 +676,7 @@ def create_histogram(conf: dict, data_paths: dict):
             for ax in axes:
                 plt.setp(ax.get_xticklabels(), rotation=30, fontsize=10)
                 ax.set_ylabel("Number of locations", fontsize=12)
+                ax.tick_params(axis="y", labelsize=12)
                 ax.set_xlabel(
                     f"{metric1} ({metric_long})"
                     f"{'' if lead1 == '0' else f'   lead={lead1}h'}",
@@ -681,9 +708,9 @@ def create_time_series(conf: dict, data_paths: dict):
     for dataset in conf["general"]["dataset_name"]:
         file = data_paths["joined"].get(dataset, None)
         if file is None or not Path(file).exists():
-            msg = f"File not found for dataset {dataset}: {file}"
-            logger.error(msg)
-            raise FileNotFoundError(msg)
+            msg = f"Paired data file not found for dataset {dataset}: {file}. Cannot create time series plot."
+            logger.warning(msg)
+            continue
 
         df = pd.read_parquet(file)[
             ["value_time", "primary_value", "secondary_value", "measurement_unit"]
@@ -705,17 +732,24 @@ def create_time_series(conf: dict, data_paths: dict):
                 on="value_time",
             )
 
+    if merged_df is None or merged_df.empty:
+        logger.error("No data available to create time series plot.")
+        return
+
     # Ensure datetime
     merged_df["value_time"] = pd.to_datetime(merged_df["value_time"])
 
     # Plot
     fig, ax = plt.subplots(figsize=(10, 6))
+    n_points = len(merged_df)
     ax.plot(
         merged_df["value_time"],
         merged_df["primary_value"],
         label="Observed",
         color="black",
         linewidth=1.2,
+        marker="o" if n_points < 30 else None,
+        linestyle="-" if n_points >= 2 else "None",
     )
 
     for dataset in conf["general"]["dataset_name"]:
@@ -723,6 +757,8 @@ def create_time_series(conf: dict, data_paths: dict):
             merged_df["value_time"],
             merged_df[dataset],
             label=dataset,
+            marker="o" if n_points < 30 else None,
+            linestyle="-" if n_points >= 2 else "None",
         )
 
     ax.set_xlabel("Time", fontsize=12)
@@ -790,7 +826,10 @@ def create_metric_table(conf: dict, data_paths: dict):
     n_groups = len(metric_groups)
 
     # Create subplots for each table
-    fig, axes = plt.subplots(n_groups, 1, figsize=(9, 1.2 * n_groups))
+    max_form_len = df_metrics["Formulation"].str.len().max()
+    fig, axes = plt.subplots(
+        n_groups, 1, figsize=(9 + max_form_len * 0.1, 1.2 * n_groups)
+    )
 
     if n_groups == 1:  # if only one group, axes is not iterable
         axes = [axes]

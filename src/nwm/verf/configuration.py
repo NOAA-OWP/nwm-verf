@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -74,29 +74,37 @@ class PairDataConfig(BaseModel):
     group_size: Optional[int] = 200
 
 
-class MetricsConfig(BaseModel):
+class LeadTimesMixin(BaseModel):
+    lead_times: Optional[List[str]] = None
+
+    @field_validator("lead_times", mode="before")
+    @classmethod
+    def normalize_lead_times(cls, v):
+        if v is None:
+            return []
+        return [str(lt) for lt in v]
+
+
+class MetricsConfig(LeadTimesMixin):
     """Data model for the 'metrics' section of the config file"""
 
     overwrite: bool
     library: str
-    # metric_subset: Optional[Union[str,List[str]]] = 'all'
     metric_subset: Union[str, List[str]]
     metric_exclude: Optional[List[str]] = None
     flow_threshold_categorical: Optional[float] = 0.9
     flow_threshold_event: Optional[float] = 0.9
-    lead_times: List[Union[str, int]]
     file_format: Optional[str] = "parquet"
 
 
 Number = Union[int, float]
 
 
-class BasePlotConfig(BaseModel):
+class BasePlotConfig(LeadTimesMixin):
     """Common fields for all plot configs"""
 
     plot: Optional[bool] = False
     metric_subset: Optional[List[str]] = []
-    lead_times: Optional[List[Union[int, str]]] = []
     tag: Optional[str] = None
 
 

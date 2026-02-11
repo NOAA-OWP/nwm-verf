@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-import nwm.eval.metric_functions as mf
 import pandas as pd
 from teehr.classes.duckdb_joined_parquet import DuckDBJoinedParquet
+
+import nwm.eval.metric_functions as mf
 
 from .nwm_configs import ForecastConfig
 from .settings import dict_nwm_eval_metrics, dict_teehr_metrics
@@ -187,11 +188,10 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
     df0 = pd.read_parquet(pair_file)
     leads0 = df0["lead_time"].unique()
     leads0.sort()
-    lead_step = leads0[0]
 
     nwm_config = conf["general"]["nwm_configuration"]
     fc = ForecastConfig(conf["file_paths"]["fcst_config_file"])
-    lead_times, missed_leads = fc.interpret_lead_times(
+    lead_times, missed_leads, lead_step = fc.interpret_lead_times(
         conf_met["lead_times"], nwm_config, leads0
     )
     if missed_leads:
@@ -208,8 +208,8 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
         if len(leads1) == 1:
             leads1 = leads1 + leads1
 
-        start = float(leads1[0])
-        end = float(leads1[1])
+        start = float(leads1[0]) if leads1[0][0] != "m" else -float(leads1[0][1:])
+        end = float(leads1[1]) if leads1[1][0] != "m" else -float(leads1[1][1:])
         step = float(lead_step)
 
         if step == 0:  # for simulation, start and end are both 0
@@ -221,8 +221,8 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
         df1 = df0[df0["lead_time"].isin(leads1)]
         df1["lead_group"] = l1
 
-        # save filtered data to new (temporary) parquet file
-        pair_file1 = pair_file.with_name(pair_file.stem + ".new.parquet")
+        # save filtered data to a new (temporary) parquet file
+        pair_file1 = pair_file.with_name(pair_file.stem + ".temp.parquet")
         df1.to_parquet(pair_file1)
 
         if conf_met["library"] == "teehr":
@@ -285,6 +285,13 @@ def calc_metrics(conf: dict, data_paths: dict):
             # calculate metrics for each group of paired data and append to a single parquet file
             pair_path = data_paths["joined"][dataset]
             pair_files = list(pair_path.parent.glob(f"{pair_path.stem}*.parquet"))
+            # remove pair_files containing 'temp' in the name
+            pair_files = [pf for pf in pair_files if "temp" not in pf.name]
+            if len(pair_files) == 0:
+                logger.warning(
+                    f"  No paired data files found for dataset {dataset} at {pair_path.parent}. Skipping metric calculation."
+                )
+
             for i1, pair_file in enumerate(pair_files):
                 if len(pair_files) > 1:
                     logger.info(f"  Calculating metrics for {dataset} group {i1} ...")

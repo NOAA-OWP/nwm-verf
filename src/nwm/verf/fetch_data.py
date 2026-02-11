@@ -1,6 +1,7 @@
 import gc
 import glob
 import os
+import sys
 import warnings
 from pathlib import Path
 
@@ -67,15 +68,40 @@ def check_existing_obs_data(obs_dir: str | Path) -> list:
     return dates0
 
 
-def check_missing_obs_data(
-    obs_dir: str | Path, conf: dict, gages: list
-) -> list[pd.Timestamp]:
+def check_missing_obs_data(obs_dir: str | Path, conf: dict, gages: list):
     """Check for missing observation data in the specified directory."""
     # Get existing observation dates
-    parquet_files = glob.glob(str(obs_dir) + "/*.parquet")
     df = pd.DataFrame()
+    parquet_files = glob.glob(str(obs_dir) + "/*.parquet")
     for p in parquet_files:
         df = pd.concat([df, pd.read_parquet(p)], ignore_index=True)
+
+    # If no observation data is found, log warning and exit
+    if df.empty:
+        max_show = 5
+        gages_list = list(gages)
+        if len(gages_list) > max_show:
+            shown = gages_list[:max_show]
+            msg = (
+                f"No observation data is available for gages {shown} "
+                f"(showing first {max_show} of {len(gages_list)})."
+                " Verification cannot proceed. Exit."
+            )
+        else:
+            msg = (
+                f"No observation data is available for gages {gages_list}."
+                " Verification cannot proceed. Exit."
+            )
+
+        logger.warning(msg)
+        sys.exit(0)
+
+    if "value_time" not in df.columns:
+        msg = f"'value_time' column not found in observation data in {obs_dir}."
+        logger.error(msg)
+        raise ValueError(msg)
+
+    df["value_time"] = pd.to_datetime(df["value_time"])
     existing_dates = df["value_time"].unique().tolist()
 
     # Get required observation dates
@@ -97,7 +123,7 @@ def check_missing_obs_data(
         required_dates = create_time_sequence(start_date, end_date, freq_hour=time_step)
 
         # Check for missing data. For ngenCERF (single gage), check by dates; otherwise, check by gages
-        if conf["nwm_forecast"]["data_source"][i1] == "ngenCERF":
+        if conf["nwm_forecast"]["data_source"] == "ngenCERF":
             # Check for missing dates
             missing_dates = [d for d in required_dates if d not in existing_dates]
             if missing_dates:
@@ -181,8 +207,20 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
             timestep1 = 1
         else:
             fcst_win1, timestep1, reference_time = get_fcst_info(conf)
-        end_date = pd.Timestamp(end_date) + pd.Timedelta(fcst_win1 + 24, unit="hours")
-        end_date = end_date.strftime("%Y-%m-%d %H:%M:%S")
+
+        # adjust start/end date based on forecast window
+        if fcst_win1 < 0:
+            start_date = pd.Timestamp(start_date) + pd.Timedelta(
+                fcst_win1, unit="hours"
+            )
+            start_date = start_date.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            end_date = pd.Timestamp(end_date) + pd.Timedelta(
+                fcst_win1 + 24, unit="hours"
+            )
+            end_date = end_date.strftime("%Y-%m-%d %H:%M:%S")
+
+        # create the list of dates required
         dates = dates + create_time_sequence(
             start_date, end_date, freq_hour=24, start_hour=0, end_hour=23
         )
@@ -241,6 +279,13 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
             # clean up memory
             gc.collect()
 
+        # if output_dir is empty after retrieval, give warning
+        if not any(output_dir.iterdir()):
+            logger.warning(
+                "  No USGS observation data retrieved for the specified gage IDs and date range."
+            )
+            return
+
         logger.info(
             f"  USGS observation data are saved in parquet files at: {output_dir}"
         )
@@ -258,8 +303,12 @@ def retrieve_fcsts_ngencerf(conf: dict, data_paths: dict):
     win_size, time_step, reference_time = get_fcst_info(conf)
 
     # Define time window for forecasts
-    start_time = reference_time + pd.Timedelta(hours=time_step)
-    end_time = start_time + pd.Timedelta(hours=win_size - time_step).round("s")
+    if win_size >= 0:
+        start_time = reference_time + pd.Timedelta(hours=time_step)
+        end_time = start_time + pd.Timedelta(hours=win_size - time_step).round("s")
+    else:
+        start_time = reference_time + pd.Timedelta(hours=win_size + time_step)
+        end_time = reference_time
 
     # read forecast data from file for each dataset
     for dataset in conf["general"]["dataset_name"]:
