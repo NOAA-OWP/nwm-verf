@@ -281,10 +281,9 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
 
         # if output_dir is empty after retrieval, give warning
         if not any(output_dir.iterdir()):
-            logger.warning(
-                "  No USGS observation data retrieved for the specified gage IDs and date range."
-            )
-            return
+            msg = "No USGS observation data retrieved for the specified gage IDs and date range."
+            logger.error(msg)
+            raise Exception(msg)
 
         logger.info(
             f"  USGS observation data are saved in parquet files at: {output_dir}"

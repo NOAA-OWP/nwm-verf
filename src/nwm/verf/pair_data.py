@@ -23,13 +23,13 @@ def join_time_series(data_paths: dict, dataset: str, nwm_version: str) -> Path:
     primary_files = list(Path(data_paths.get("obs")).glob("*.parquet"))
     if len(primary_files) == 0:
         msg = f"No observation data files found in {data_paths.get('obs')}. Verification cannot proceed. Exit."
-        logger.warning(msg)
-        sys.exit(0)
+        logger.error(msg)
+        raise Exception(msg)
     secondary_files = list(Path(data_paths.get("fcst_link")[dataset]).glob("*.parquet"))
     if len(secondary_files) == 0:
         msg = f"No forecast data files found in {data_paths.get('fcst_link')[dataset]}. Verification cannot proceed. Exit."
-        logger.warning(msg)
-        sys.exit(0)
+        logger.error(msg)
+        raise Exception(msg)
 
     # If there is an existing database, delete it and create a new one.
     db_filepath = Path(output_dir, "teehr.db")
