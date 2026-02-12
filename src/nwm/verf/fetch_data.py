@@ -126,14 +126,25 @@ def check_missing_obs_data(obs_dir: str | Path, conf: dict, gages: list):
         # Check for missing data. For ngenCERF (single gage), check by dates; otherwise, check by gages
         if conf["nwm_forecast"]["data_source"] == "ngenCERF":
             # Check for missing dates
+            max_show = 5  # number of dates to show in logging
             missing_dates = [d for d in required_dates if d not in existing_dates]
             if missing_dates:
-                formatted = ", ".join(
-                    [d.strftime("%Y-%m-%d %H:%M:%S") for d in missing_dates]
-                )
-                logger.warning(
-                    f"{dataset} - Missing observation data for dates: {formatted}"
-                )
+                total_missing = len(missing_dates)
+
+                shown = missing_dates[:max_show]
+                shown_str = ", ".join(d.strftime("%Y-%m-%d %H:%M:%S") for d in shown)
+
+                if total_missing > max_show:
+                    msg = (
+                        f"{dataset} - Missing observation data for "
+                        f"{total_missing} timestamps (showing first {max_show}): {shown_str} ..."
+                    )
+                else:
+                    msg = (
+                        f"{dataset} - Missing observation data for "
+                        f"{total_missing} timestamps: {shown_str}"
+                    )
+                logger.warning(msg)
         else:
             # first filter data with dates within required dates range
             df_required = df[
@@ -270,18 +281,29 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
         # loop through the date chunks to download USGS data
         hourly = False if timestep1 < 1 else True
         for d1 in date_list:
-            logger.info(f"  Downloading USGS data for {min(d1)} to {max(d1)} ...")
-
-            # use a local dask cluster to fetch the data
-            with (
-                LocalCluster(
-                    n_workers=n_workers,
-                    processes=True,
-                    memory_limit=f"{mem_limit}GB",
-                    dashboard_address=None,
-                ) as cluster,
-                Client(cluster) as client,
-            ):
+            use_dask = (
+                conf["nwm_forecast"]["data_source"] != "ngenCERF" and n_workers > 1
+            )
+            if use_dask:
+                logger.info(
+                    f"  Using Dask with {n_workers} workers to download USGS data ..."
+                )
+                # use a local dask cluster to fetch the data
+                with (
+                    LocalCluster(
+                        n_workers=n_workers,
+                        processes=True,
+                        memory_limit=f"{mem_limit}GB",
+                        dashboard_address=None,
+                    ) as cluster,
+                    Client(cluster) as client,
+                ):
+                    try:
+                        safe_fetch_usgs(list_usgs, d1, conf2, str(output_dir), hourly)
+                    except (ServerDisconnectedError, ClientOSError) as e:
+                        logger.warning(f"Failed to fetch USGS data after retries: {e}")
+            else:
+                logger.info("  Running USGS fetch without Dask (single-process mode)")
                 try:
                     safe_fetch_usgs(list_usgs, d1, conf2, str(output_dir), hourly)
                 except (ServerDisconnectedError, ClientOSError) as e:

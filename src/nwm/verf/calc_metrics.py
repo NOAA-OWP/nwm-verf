@@ -195,7 +195,12 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
         conf_met["lead_times"], nwm_config, leads0
     )
     if missed_leads:
-        logger.warning(f"Missing lead times: {missed_leads}")
+        if len(missed_leads) > 10:
+            logger.warning(
+                f"Many lead times specified for metric calculation are not present in the data: {missed_leads[:10]}... (total {len(missed_leads)})"
+            )
+        else:
+            logger.warning(f"Missing lead times: {missed_leads}")
     logger.debug(f"Lead times to calculate metrics for: {lead_times}")
 
     # removed repetitive lead times if any
