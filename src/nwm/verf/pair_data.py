@@ -23,13 +23,13 @@ def join_time_series(data_paths: dict, dataset: str, nwm_version: str) -> Path:
     primary_files = list(Path(data_paths.get("obs")).glob("*.parquet"))
     if len(primary_files) == 0:
         msg = f"No observation data files found in {data_paths.get('obs')}. Verification cannot proceed. Exit."
-        logger.warning(msg)
-        sys.exit(0)
+        logger.error(msg)
+        raise Exception(msg)
     secondary_files = list(Path(data_paths.get("fcst_link")[dataset]).glob("*.parquet"))
     if len(secondary_files) == 0:
         msg = f"No forecast data files found in {data_paths.get('fcst_link')[dataset]}. Verification cannot proceed. Exit."
-        logger.warning(msg)
-        sys.exit(0)
+        logger.error(msg)
+        raise Exception(msg)
 
     # If there is an existing database, delete it and create a new one.
     db_filepath = Path(output_dir, "teehr.db")
@@ -96,6 +96,36 @@ def export_location_groups_with_lead_time(
 ):
     # Get sorted list of unique primary_location_id values
     con = duckdb.connect(str(db_path))
+
+    # Check table exists
+    tables = con.execute("SHOW TABLES").fetchall()
+    logger.info(f"Available tables: {tables}")
+
+    # Check row count
+    row_count = con.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+    logger.info(f"{table_name} row count: {row_count}")
+
+    if row_count == 0:
+        raise Exception(
+            f"{table_name} exists but contains no rows, i.e., pairing produced no matches between forecast "
+            f"and observation data. Verification cannot proceed. Exit."
+        )
+
+    # Get IDs
+    location_ids = con.execute(f"""
+        SELECT DISTINCT primary_location_id
+        FROM {table_name}
+        WHERE primary_location_id IS NOT NULL
+        ORDER BY primary_location_id
+    """).fetchall()
+
+    location_ids = [loc[0] for loc in location_ids]
+
+    if not location_ids:
+        raise Exception(
+            f"{table_name} has rows but no non-null primary_location_id values"
+        )
+
     location_ids = con.execute(f"""
         SELECT DISTINCT primary_location_id FROM {table_name}
         ORDER BY primary_location_id

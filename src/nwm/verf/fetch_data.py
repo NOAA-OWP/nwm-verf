@@ -5,6 +5,7 @@ import sys
 import warnings
 from pathlib import Path
 
+import aiohttp
 import pandas as pd
 import teehr.loading.nwm.nwm_points as tlp
 import xarray as xr
@@ -125,14 +126,25 @@ def check_missing_obs_data(obs_dir: str | Path, conf: dict, gages: list):
         # Check for missing data. For ngenCERF (single gage), check by dates; otherwise, check by gages
         if conf["nwm_forecast"]["data_source"] == "ngenCERF":
             # Check for missing dates
+            max_show = 5  # number of dates to show in logging
             missing_dates = [d for d in required_dates if d not in existing_dates]
             if missing_dates:
-                formatted = ", ".join(
-                    [d.strftime("%Y-%m-%d %H:%M:%S") for d in missing_dates]
-                )
-                logger.warning(
-                    f"{dataset} - Missing observation data for dates: {formatted}"
-                )
+                total_missing = len(missing_dates)
+
+                shown = missing_dates[:max_show]
+                shown_str = ", ".join(d.strftime("%Y-%m-%d %H:%M:%S") for d in shown)
+
+                if total_missing > max_show:
+                    msg = (
+                        f"{dataset} - Missing observation data for "
+                        f"{total_missing} timestamps (showing first {max_show}): {shown_str} ..."
+                    )
+                else:
+                    msg = (
+                        f"{dataset} - Missing observation data for "
+                        f"{total_missing} timestamps: {shown_str}"
+                    )
+                logger.warning(msg)
         else:
             # first filter data with dates within required dates range
             df_required = df[
@@ -156,15 +168,25 @@ def check_missing_obs_data(obs_dir: str | Path, conf: dict, gages: list):
 def safe_fetch_usgs(
     site_codes: list, dates: list, conf: dict, out_dir: str, hourly: bool = True
 ):
-    usgs_to_parquet(
-        sites=site_codes,
-        start_date=min(dates),
-        end_date=max(dates) + pd.Timedelta(hours=23),
-        output_parquet_dir=out_dir,
-        chunk_by=conf["chunk_by"],
-        filter_to_hourly=hourly,
-        overwrite_output=conf["overwrite_output"],
-    )
+    try:
+        usgs_to_parquet(
+            sites=site_codes,
+            start_date=min(dates),
+            end_date=max(dates) + pd.Timedelta(hours=23),
+            output_parquet_dir=out_dir,
+            chunk_by=conf["chunk_by"],
+            filter_to_hourly=hourly,
+            overwrite_output=conf["overwrite_output"],
+        )
+    except aiohttp.client_exceptions.ContentTypeError as e:
+        raise RuntimeError(
+            "USGS request returned non-JSON response.\n"
+            f"Sites: {site_codes}\n"
+            f"Date range: {min(dates)} → {max(dates)}\n"
+            f"Hourly: {hourly}\n"
+            "This often means the USGS service returned an HTML error page "
+            "(bad parameters, rate limit, or service outage)."
+        ) from e
 
 
 def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
@@ -259,18 +281,29 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
         # loop through the date chunks to download USGS data
         hourly = False if timestep1 < 1 else True
         for d1 in date_list:
-            logger.info(f"  Downloading USGS data for {min(d1)} to {max(d1)} ...")
-
-            # use a local dask cluster to fetch the data
-            with (
-                LocalCluster(
-                    n_workers=n_workers,
-                    processes=True,
-                    memory_limit=f"{mem_limit}GB",
-                    dashboard_address=None,
-                ) as cluster,
-                Client(cluster) as client,
-            ):
+            use_dask = (
+                conf["nwm_forecast"]["data_source"] != "ngenCERF" and n_workers > 1
+            )
+            if use_dask:
+                logger.info(
+                    f"  Using Dask with {n_workers} workers to download USGS data ..."
+                )
+                # use a local dask cluster to fetch the data
+                with (
+                    LocalCluster(
+                        n_workers=n_workers,
+                        processes=True,
+                        memory_limit=f"{mem_limit}GB",
+                        dashboard_address=None,
+                    ) as cluster,
+                    Client(cluster) as client,
+                ):
+                    try:
+                        safe_fetch_usgs(list_usgs, d1, conf2, str(output_dir), hourly)
+                    except (ServerDisconnectedError, ClientOSError) as e:
+                        logger.warning(f"Failed to fetch USGS data after retries: {e}")
+            else:
+                logger.info("  Running USGS fetch without Dask (single-process mode)")
                 try:
                     safe_fetch_usgs(list_usgs, d1, conf2, str(output_dir), hourly)
                 except (ServerDisconnectedError, ClientOSError) as e:
@@ -281,10 +314,9 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
 
         # if output_dir is empty after retrieval, give warning
         if not any(output_dir.iterdir()):
-            logger.warning(
-                "  No USGS observation data retrieved for the specified gage IDs and date range."
-            )
-            return
+            msg = "No USGS observation data retrieved for the specified gage IDs and date range. Verification cannot proceed. Exit."
+            logger.error(msg)
+            raise Exception(msg)
 
         logger.info(
             f"  USGS observation data are saved in parquet files at: {output_dir}"

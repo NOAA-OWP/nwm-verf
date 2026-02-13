@@ -706,22 +706,43 @@ def create_time_series(conf: dict, data_paths: dict):
     # Load all files and merge on "value_time"
     merged_df = None
     for dataset in conf["general"]["dataset_name"]:
+        # get observed data from paired data file
         file = data_paths["joined"].get(dataset, None)
         if file is None or not Path(file).exists():
             msg = f"Paired data file not found for dataset {dataset}: {file}. Cannot create time series plot."
             logger.warning(msg)
             continue
 
-        df = pd.read_parquet(file)[
-            ["value_time", "primary_value", "secondary_value", "measurement_unit"]
-        ]
+        df = pd.read_parquet(file)[["value_time", "primary_value", "measurement_unit"]]
+
+        # get forecast data from forecast data file (because paired data file trimmed forecast data to
+        # the time range of observed data by teehr)
+        fcst_dir = Path(data_paths.get("fcst_link", {}).get(dataset, ""))
+        if not fcst_dir.exists():
+            msg = f"Forecast data directory not found for dataset {dataset}: {fcst_dir}. Cannot create time series plot."
+            logger.error(msg)
+            raise FileNotFoundError(msg)
+
+        parquet_files = list(fcst_dir.glob("*.parquet"))
+        if not parquet_files:
+            msg = f"No parquet files found in {fcst_dir} for dataset {dataset}. Cannot create time series plot."
+            logger.error(msg)
+            raise FileNotFoundError(msg)
+        df_fcst = pd.concat(
+            [pd.read_parquet(f)[["value_time", "value"]] for f in parquet_files],
+            ignore_index=True,
+        )
+
+        # merge observed and forecast data on value_time
+        df = pd.merge(df, df_fcst, on="value_time", how="outer")
+
         unit = (
             df["measurement_unit"].iloc[0]
             if not df["measurement_unit"].isnull().all()
             else None
         )
         df.drop(columns=["measurement_unit"], inplace=True)
-        df = df.rename(columns={"secondary_value": dataset})
+        df = df.rename(columns={"value": dataset})
 
         if merged_df is None:
             merged_df = df
