@@ -93,12 +93,14 @@ def calc_teehr_metrics(
 def func_calc_metrics(
     df: pd.DataFrame, metrics: list[str], lead_time: int, thresholds: list = [0.9, 0.9]
 ) -> pd.DataFrame:
-    if len(df) < 2:  # personr calculation requires data length of at least 2
-        logger.warning(
+    if len(df) < 2:  # metric calculation requires data length of at least 2
+        msg = (
             f"Insufficient data for metric calculation, lead time: {lead_time}, "
-            f"location: {df['primary_location_id'].unique()[0]} (data length: {len(df)})"
+            f"location: {df['primary_location_id'].unique()[0]} (data length: {len(df)}). "
+            f"Verification cannot proceed. Exit."
         )
-        return pd.DataFrame()
+        logger.error(msg)
+        raise Exception(msg)
     else:
         df1 = df.copy(deep=True)
         df1 = df1.set_index("value_time", inplace=False)
