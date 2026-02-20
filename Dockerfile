@@ -38,6 +38,7 @@ RUN set -eux; \
         which \
         xz \
         zlib zlib-devel \
+        jq \
     ; \
     dnf clean all
 
@@ -127,6 +128,26 @@ COPY ./docker/run-nwm-verf.sh /ngen-app/bin/
 RUN set -eux; \
 	\
     chmod +x /ngen-app/bin/run-nwm-verf.sh
+
+ARG CI_COMMIT_REF_NAME
+
+RUN set -eux; \
+    repo_url=$(git config --get remote.origin.url); \
+    key=${repo_url##*/}; \
+    key=${key%.git}; \
+    GIT_INFO_PATH="/ngen-app/${key}_git_info.json"; \
+    branch=$( [ -n "${CI_COMMIT_REF_NAME:-}" ] && echo "${CI_COMMIT_REF_NAME}" || git rev-parse --abbrev-ref HEAD ); \
+    jq -n \
+      --arg commit_hash "$(git rev-parse HEAD)" \
+      --arg branch "$branch" \
+      --arg tags "$(git tag --points-at HEAD | tr '\n' ' ')" \
+      --arg author "$(git log -1 --pretty=format:'%an')" \
+      --arg commit_date "$(date -u -d @$(git log -1 --pretty=format:'%ct') +'%Y-%m-%d %H:%M:%S UTC')" \
+      --arg message "$(git log -1 --pretty=format:'%s' | tr '\n' ';')" \
+      --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
+      "{\"$key\": {commit_hash: \$commit_hash, branch: \$branch, tags: \$tags, author: \$author, commit_date: \$commit_date, message: \$message, build_date: \$build_date}}" \
+      > $GIT_INFO_PATH
+
 
 WORKDIR /
 SHELL ["/bin/bash", "-c"]
