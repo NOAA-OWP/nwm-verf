@@ -213,9 +213,7 @@ def get_txdot_gage_list(config: dict) -> list:
     return gage_list
 
 
-def process_txdot_data(
-    df: pd.DataFrame, gauge_id: str, freq: str = "H"
-) -> pd.DataFrame:
+def process_txdot_data(df: pd.DataFrame, gage_id: str, freq: str = "H") -> pd.DataFrame:
     """Process raw TxDOT streamflow data for a specific gage ID."""
     CFS_TO_CMS = 0.3048**3
 
@@ -235,7 +233,7 @@ def process_txdot_data(
             break
 
     if selected_col is None:
-        raise ValueError(f"No expected discharge columns found for gauge {gauge_id}")
+        raise ValueError(f"No expected discharge columns found for gage {gage_id}")
 
     # Convert units
     df[selected_col] = df[selected_col] * CFS_TO_CMS
@@ -252,7 +250,7 @@ def process_txdot_data(
     return df
 
 
-def fetch_txdot_gauge_data(
+def fetch_txdot_gage_data(
     site_codes: list, dates: list, conf: dict, out_dir: str, hourly: bool = True
 ):
     """Fetch streamflow data for a list of TxDOT gage IDs and a date range, and resample temporarily as needed."""
@@ -445,7 +443,7 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
             # fetch data for TxDOT gages
             if list_txdot:
                 logger.info(f"  Fetching TxDOT gages data for gages: {list_txdot} ...")
-                fetch_txdot_gauge_data(list_txdot, d1, conf, str(output_dir), hourly)
+                fetch_txdot_gage_data(list_txdot, d1, conf, str(output_dir), hourly)
 
             # clean up memory
             gc.collect()
