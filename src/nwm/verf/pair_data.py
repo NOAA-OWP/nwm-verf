@@ -97,10 +97,6 @@ def export_location_groups_with_lead_time(
     # Get sorted list of unique primary_location_id values
     con = duckdb.connect(str(db_path))
 
-    # Check table exists
-    tables = con.execute("SHOW TABLES").fetchall()
-    logger.info(f"Available tables: {tables}")
-
     # Check row count
     row_count = con.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
     logger.info(f"{table_name} row count: {row_count}")

@@ -35,7 +35,8 @@ def get_link_by_gage(gages: List[str], crosswalk_file: str):
         )
 
     gages1 = [x[1] for x in df1["gage"].str.split("-")]
-    links1 = [int(x[1]) for x in df1["secondary_location_id"].str.split("-")]
+    # links1 = [int(x[1]) for x in df1["secondary_location_id"].str.split("-")]
+    links1 = [x[1] for x in df1["secondary_location_id"].str.split("-")]
 
     return gages1, links1
 
@@ -234,9 +235,7 @@ def identify_locations(conf: dict) -> dict:
         locations_usgs1, locations_nwm1 = get_link_by_gage(
             locations_usgs, conf["file_paths"]["crosswalk_file"][nwm_version]
         )
-        logger.info(
-            f"  Total number of locations for dataset {dataset}: {len(locations_nwm1)}"
-        )
+        logger.info(f"  Total number of locations for {dataset}: {len(locations_nwm1)}")
         locations[dataset] = {"primary": locations_usgs1, "secondary": locations_nwm1}
 
     return locations

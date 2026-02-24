@@ -41,6 +41,7 @@ class FilePathsConfig(BaseModel):
     fcst_config_file: Optional[str | Path] = None
     fcst_data_file: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = None
     calib_param_file: Optional[Path | str] = None
+    txdot_gage_file: Optional[Path | str] = None
     output_dir: str | Path
 
 
