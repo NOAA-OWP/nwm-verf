@@ -425,7 +425,7 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
                     ):
                         try:
                             safe_fetch_usgs(
-                                list_usgs, d1, conf2, str(output_dir), hourly
+                                list_non_txdot, d1, conf2, str(output_dir), hourly
                             )
                         except (ServerDisconnectedError, ClientOSError) as e:
                             logger.warning(
@@ -436,7 +436,9 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
                         "  Running USGS fetch without Dask (single-process mode)"
                     )
                     try:
-                        safe_fetch_usgs(list_usgs, d1, conf2, str(output_dir), hourly)
+                        safe_fetch_usgs(
+                            list_non_txdot, d1, conf2, str(output_dir), hourly
+                        )
                     except (ServerDisconnectedError, ClientOSError) as e:
                         logger.warning(f"Failed to fetch USGS data after retries: {e}")
 
