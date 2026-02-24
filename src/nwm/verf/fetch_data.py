@@ -326,7 +326,7 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
 
     list_txdot = get_txdot_gage_list(conf)
     list_txdot = [gage for gage in list_txdot if gage in list_usgs]
-    list_non_txtdot = [gage for gage in list_usgs if gage not in list_txdot]
+    list_non_txdot = [gage for gage in list_usgs if gage not in list_txdot]
 
     # get some general information
     conf1 = conf["general"]
@@ -405,7 +405,7 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
         hourly = False if timestep1 < 1 else True
         for d1 in date_list:
             # fetch data for standard usgs (non-TxDOT) gages
-            if list_non_txtdot:
+            if list_non_txdot:
                 use_dask = (
                     conf["nwm_forecast"]["data_source"] != "ngenCERF" and n_workers > 1
                 )
