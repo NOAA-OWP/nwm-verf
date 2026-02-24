@@ -253,7 +253,7 @@ def process_txdot_data(df: pd.DataFrame, gage_id: str, freq: str = "H") -> pd.Da
 def fetch_txdot_gage_data(
     site_codes: list, dates: list, conf: dict, out_dir: str, hourly: bool = True
 ):
-    """Fetch streamflow data for a list of TxDOT gage IDs and a date range, and resample temporarily as needed."""
+    """Fetch streamflow data for a list of TxDOT gage IDs and a date range, and resample temporally as needed."""
     dates_str = list(dict.fromkeys(d.strftime("%Y-%m-%d") for d in dates))
     date_start = min(dates_str)
     date_end = max(dates_str)
