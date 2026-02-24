@@ -6,12 +6,16 @@ import geopandas as gpd
 import pandas as pd
 
 # root dir for all data
-root_dir = Path("~/repos/nwm-verf/data/inputs/").expanduser()
+root_dir = Path("~/repos/nwm-verf/data/inputs").expanduser()
 
-# get gage IDs from crosswalk parquet
-cwt = pd.read_parquet(
-    Path(root_dir, "regionalization", "usgs_ngen_crosswalk_conus.parquet")
-)
+# get gage IDs from crosswalk parquet from all domains and combine into a single dataframe
+cwt = pd.DataFrame()
+for domain in ["conus", "ak", "hi", "prvi"]:
+    cwt_file = Path(
+        root_dir, "regionalization", f"usgs_ngen_crosswalk_{domain}.parquet"
+    )
+    print(f"Reading crosswalk file {cwt_file}...")
+    cwt = pd.concat([cwt, pd.read_parquet(cwt_file)], ignore_index=True)
 
 # read gage metadata
 f1 = Path(root_dir, "gage_files", "gages_metadata_all_domains.csv").resolve(strict=True)
@@ -40,6 +44,26 @@ gdf = gdf[
 # sort by primary_location_id
 gdf.sort_values("primary_location_id", inplace=True)
 
+# if primary_location_id starts with "cadwr-" and domain is NULL, set domain to "conus"
+gdf["domain"] = gdf.apply(
+    lambda row: "conus"
+    if row.primary_location_id.startswith("cadwr-") and pd.isna(row.domain)
+    else row.domain,
+    axis=1,
+)
+
+# if secondary_location_id is NaN, create it from primary_location_id by splitting by "-" and replacing
+# the first substring with "ngen" and keeping the rest of the string
+gdf["secondary_location_id"] = gdf.apply(
+    lambda row: "ngen-" + "-".join(row.primary_location_id.split("-")[1:])
+    if pd.isna(row.secondary_location_id)
+    else row.secondary_location_id,
+    axis=1,
+)
+
 # save to parquet file
-gdf.to_parquet(Path(root_dir, "gage_hydrofabric_all_domains.parquet"), index=False)
+gdf.to_parquet(
+    Path(root_dir, "gage_hydrofabric_all_domains.parquet"),
+    index=False,
+)
 print(gdf.head())

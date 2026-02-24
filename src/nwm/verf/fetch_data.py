@@ -6,6 +6,7 @@ import warnings
 from pathlib import Path
 
 import aiohttp
+import dataretrieval.nwis as nwis
 import pandas as pd
 import teehr.loading.nwm.nwm_points as tlp
 import xarray as xr
@@ -17,6 +18,7 @@ from dask.distributed import (  # install with 'pip install dask[complete]'
 from teehr.loading.usgs.usgs import usgs_to_parquet
 
 from .nwm_configs import ForecastConfig
+from .settings import default_txdot_gage_list
 from .utils import create_time_sequence, get_n_workers, read_data, save_data
 
 warnings.filterwarnings("ignore", message="Compute Engine Metadata server unavailable")
@@ -189,6 +191,125 @@ def safe_fetch_usgs(
         ) from e
 
 
+def get_txdot_gage_list(config: dict) -> list:
+    """Get the list of gage IDs for retrieving TxDOT streamflow observations."""
+    txdot_gage_file = config["file_paths"].get("txdot_gage_file", None)
+    if not txdot_gage_file:
+        return default_txdot_gage_list
+
+    if txdot_gage_file and not txdot_gage_file.exists():
+        msg = f"TxDOT gage file not found at {txdot_gage_file}. Cannot retrieve TxDOT streamflow observations."
+        logger.error(msg)
+        raise FileNotFoundError(msg)
+
+    try:
+        with open(txdot_gage_file, "r") as f:
+            gage_list = [line.strip() for line in f if line.strip()]
+    except Exception as e:
+        msg = f"Error reading TxDOT gage file at {txdot_gage_file}: {e}"
+        logger.error(msg)
+        raise e
+
+    return gage_list
+
+
+def process_txdot_data(
+    df: pd.DataFrame, gauge_id: str, freq: str = "H"
+) -> pd.DataFrame:
+    """Process raw TxDOT streamflow data for a specific gage ID."""
+    CFS_TO_CMS = 0.3048**3
+
+    flow_cols = [
+        "00060",
+        "00060_3",
+        "00060_300060_rq-30",
+        "00060_downstream, [rq-30",
+        "00060_learned discharge",
+    ]
+
+    # select the first available column for discharge
+    selected_col = None
+    for col in flow_cols:
+        if col in df.columns:
+            selected_col = col
+            break
+
+    if selected_col is None:
+        raise ValueError(f"No expected discharge columns found for gauge {gauge_id}")
+
+    # Convert units
+    df[selected_col] = df[selected_col] * CFS_TO_CMS
+
+    # Resample with specified frequency, keeping the first value in each period
+    df = df.resample(freq).first()
+
+    # Keep only selected column for discharge
+    df = df[[selected_col]]
+
+    # Rename selected column to "value"
+    df = df.rename(columns={selected_col: "value"})
+
+    return df
+
+
+def fetch_txdot_gauge_data(
+    site_codes: list, dates: list, conf: dict, out_dir: str, hourly: bool = True
+):
+    """Fetch streamflow data for a list of TxDOT gage IDs and a date range, and resample temporarily as needed."""
+    dates_str = list(dict.fromkeys(d.strftime("%Y-%m-%d") for d in dates))
+    date_start = min(dates_str)
+    date_end = max(dates_str)
+
+    df_all = pd.DataFrame()
+    for gage_id in site_codes:
+        try:
+            # convert d1 in UTC to local time for the gage location (for TX: America/Chicago timezone)
+            tz = "America/Chicago"
+            local_start = pd.Timestamp(f"{date_start} 00:00:00", tz="UTC").tz_convert(
+                tz
+            )
+            local_end = pd.Timestamp(f"{date_end} 23:59:59", tz="UTC").tz_convert(tz)
+            df = nwis.get_record(
+                sites=gage_id,
+                service="iv",
+                start=local_start.strftime("%Y-%m-%dT%H:%M:%S"),
+                end=local_end.strftime("%Y-%m-%dT%H:%M:%S"),
+                access="3",
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch TxDOT data for gage {gage_id} for date range {date_start} to {date_end}: {e}"
+            )
+
+        if df.empty:
+            logger.warning(
+                f"No TxDOT data returned for gage {gage_id} for date range {date_start} to {date_end}"
+            )
+            continue
+
+        # logger.info(f"df before processing for gage {gage_id} on {date_start} to {date_end}:\n{df.head()}")
+        df_processed = process_txdot_data(df, gage_id, freq="H" if hourly else "D")
+        df_processed["location_id"] = f"usgs-{gage_id}"
+        df_processed["value_time"] = df_processed.index
+        df_processed = df_processed[["location_id", "value_time", "value"]]
+
+        # remove tz info in value_time (which is in UTC)
+        if df_processed["value_time"].dt.tz is not None:
+            df_processed["value_time"] = df_processed["value_time"].dt.tz_localize(None)
+
+        # add a few extra columns for compatibility with teehr
+        df_processed["reference_time"] = df_processed["value_time"]
+        df_processed["variable_name"] = conf["general"]["variable_name"]
+        df_processed["measurement_unit"] = "m3/s"
+        df_all = pd.concat([df_all, df_processed], ignore_index=True)
+
+    if not df_all.empty:
+        start1 = df_all["value_time"].min().strftime("%Y-%m-%dT%H:%M:%S")
+        end1 = df_all["value_time"].max().strftime("%Y-%m-%dT%H:%M:%S")
+        output_file = Path(out_dir) / f"{start1}_{end1}_txdot.parquet"
+        df_all.to_parquet(output_file, index=False)
+
+
 def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
     """Retrieve USGS streamflow observations given configuration and a list of gage IDs.
 
@@ -204,6 +325,10 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
     list_usgs = list(
         {item for subdict in locations.values() for item in subdict["primary"]}
     )
+
+    list_txdot = get_txdot_gage_list(conf)
+    list_txdot = [gage for gage in list_txdot if gage in list_usgs]
+    list_non_txtdot = [gage for gage in list_usgs if gage not in list_txdot]
 
     # get some general information
     conf1 = conf["general"]
@@ -281,52 +406,63 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
         # loop through the date chunks to download USGS data
         hourly = False if timestep1 < 1 else True
         for d1 in date_list:
-            use_dask = (
-                conf["nwm_forecast"]["data_source"] != "ngenCERF" and n_workers > 1
-            )
-            if use_dask:
-                logger.info(
-                    f"  Using Dask with {n_workers} workers to download USGS data ..."
+            # fetch data for standard usgs (non-TxDOT) gages
+            if list_non_txtdot:
+                use_dask = (
+                    conf["nwm_forecast"]["data_source"] != "ngenCERF" and n_workers > 1
                 )
-                # use a local dask cluster to fetch the data
-                with (
-                    LocalCluster(
-                        n_workers=n_workers,
-                        processes=True,
-                        memory_limit=f"{mem_limit}GB",
-                        dashboard_address=None,
-                    ) as cluster,
-                    Client(cluster) as client,
-                ):
+                if use_dask:
+                    logger.info(
+                        f"  Using Dask with {n_workers} workers to download USGS data ..."
+                    )
+                    # use a local dask cluster to fetch the data
+                    with (
+                        LocalCluster(
+                            n_workers=n_workers,
+                            processes=True,
+                            memory_limit=f"{mem_limit}GB",
+                            dashboard_address=None,
+                        ) as cluster,
+                        Client(cluster) as client,
+                    ):
+                        try:
+                            safe_fetch_usgs(
+                                list_usgs, d1, conf2, str(output_dir), hourly
+                            )
+                        except (ServerDisconnectedError, ClientOSError) as e:
+                            logger.warning(
+                                f"Failed to fetch USGS data after retries: {e}"
+                            )
+                else:
+                    logger.info(
+                        "  Running USGS fetch without Dask (single-process mode)"
+                    )
                     try:
                         safe_fetch_usgs(list_usgs, d1, conf2, str(output_dir), hourly)
                     except (ServerDisconnectedError, ClientOSError) as e:
                         logger.warning(f"Failed to fetch USGS data after retries: {e}")
-            else:
-                logger.info("  Running USGS fetch without Dask (single-process mode)")
-                try:
-                    safe_fetch_usgs(list_usgs, d1, conf2, str(output_dir), hourly)
-                except (ServerDisconnectedError, ClientOSError) as e:
-                    logger.warning(f"Failed to fetch USGS data after retries: {e}")
+
+            # fetch data for TxDOT gages
+            if list_txdot:
+                logger.info(f"  Fetching TxDOT gages data for gages: {list_txdot} ...")
+                fetch_txdot_gauge_data(list_txdot, d1, conf, str(output_dir), hourly)
 
             # clean up memory
             gc.collect()
 
         # if output_dir is empty after retrieval, give warning
         if not any(output_dir.iterdir()):
-            msg = "No USGS observation data retrieved for the specified gage IDs and date range. Verification cannot proceed. Exit."
+            msg = "No observation data retrieved for the specified gage IDs and date range. Verification cannot proceed. Exit."
             logger.error(msg)
             raise Exception(msg)
 
-        logger.info(
-            f"  USGS observation data are saved in parquet files at: {output_dir}"
-        )
+        logger.info(f"  Observation data are saved in parquet files at: {output_dir}")
 
     # Check for missing observation data after retrieval
     check_missing_obs_data(output_dir, conf, list_usgs)
 
 
-def retrieve_fcsts_ngencerf(conf: dict, data_paths: dict):
+def retrieve_fcsts_ngencerf(locations: dict, conf: dict, data_paths: dict):
     """Retrieve NWM forecasts given the configurations and list of locations from the NGENCERF data source.
 
     The forecast files are generated by ngenCERF on the server.
@@ -344,7 +480,7 @@ def retrieve_fcsts_ngencerf(conf: dict, data_paths: dict):
 
     # read forecast data from file for each dataset
     for dataset in conf["general"]["dataset_name"]:
-        logger.info(f"  Retrieving forecast data for dataset {dataset} ...")
+        logger.info(f"  Retrieving forecast data for {dataset} ...")
 
         fcst_file = conf["file_paths"]["fcst_data_file"][dataset]
         df_fcst = read_data(fcst_file, dtype={"sim_flow": float}, parse_dates=["Time"])
@@ -390,14 +526,26 @@ def retrieve_fcsts_ngencerf(conf: dict, data_paths: dict):
 
         # add additional columns to match the format expected by teehr
         df_fcst["reference_time"] = reference_time
-        df_fcst["location_id"] = (
-            conf["general"]["nwm_version"][0]
-            + "-"
-            + conf["general"]["location_list"][0]
-        )
         df_fcst["configuration"] = conf["general"]["nwm_configuration"]
         df_fcst["variable_name"] = conf["general"]["variable_name"]
         df_fcst["measurement_unit"] = "m3/s"
+
+        # get the location_id for the forecast data
+        print(f"locations for {dataset}: {locations}")
+        loc_fcst_list = list(
+            {item for subdict in locations.values() for item in subdict["secondary"]}
+        )
+        if len(loc_fcst_list) == 0:
+            msg = "No secondary_location_id found in locations for forecast data. Verification cannot proceed."
+            logger.error(msg)
+            raise ValueError(msg)
+        if len(loc_fcst_list) > 1:
+            logger.warning(
+                "Multiple secondary_location_id found in locations. Using the first one for location_id in forecast data."
+            )
+        df_fcst["location_id"] = (
+            conf["general"]["nwm_version"][0] + "-" + str(loc_fcst_list[0])
+        )
 
         # save forecast data to parquet files
         output_file = Path(
@@ -672,7 +820,7 @@ def retrieve_fcsts(locations: dict, conf: dict, data_paths: dict):
     if conf["nwm_forecast"]["data_source"].upper() in ["GCS", "NOMADS", "DSTOR"]:
         retrieve_fcsts_gcs(locations, conf, data_paths)
     elif conf["nwm_forecast"]["data_source"].upper() == "NGENCERF":
-        retrieve_fcsts_ngencerf(conf, data_paths)
+        retrieve_fcsts_ngencerf(locations, conf, data_paths)
     elif conf["nwm_forecast"]["data_source"].upper() == "NGENSIM":
         retrieve_ngen_simulation(conf, data_paths)
     else:
