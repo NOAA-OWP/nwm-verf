@@ -29,13 +29,13 @@ RUN set -eux; \
         gcc-toolset-10-libasan-devel \
         libasan6 \
         libffi libffi-devel \
-        m4 \ 
+        m4 \
         openssl openssl-devel \
         rsync \
         sqlite sqlite-devel \
         tk tk-devel \
-        uuid uuid-devel \ 
-        which \ 
+        uuid uuid-devel \
+        which \
         xz \
         zlib zlib-devel \
     ; \
@@ -103,37 +103,33 @@ RUN set -eux; \
 		ln -svT "$src" "/usr/local/bin/$dst"; \
 	done
 
-RUN --mount=type=secret,id=GITLAB_TOKEN \ 
-    set -eux; \
-    \
-    git config --global url."https://oauth2:$(cat /run/secrets/GITLAB_TOKEN)@gitlab.sh.nextgenwaterprediction.com/".insteadOf "https://gitlab.sh.nextgenwaterprediction.com/"
 
-ENV VIRTUAL_ENV=/ngen-app/ngen-verf-python
+ENV VIRTUAL_ENV=/ngen-app/nwm-verf-python
 RUN set -eux; \
         \
         python3.10 -m venv ${VIRTUAL_ENV}
 ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
 
-ARG NGEN_EVAL_TAG=development
+ARG NWM_EVAL_MGR_TAG=development
 RUN set -eux; \
 	\
-    pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-eval.git@${NGEN_EVAL_TAG}#egg=ngen_eval" ; \
+    pip3 install "git+https://github.com/NGWPC/nwm-eval-mgr.git@${NWM_EVAL_MGR_TAG}" ; \
     pip3 cache purge
 
-COPY . /ngen-app/ngen-verf/
-WORKDIR /ngen-app/ngen-verf/
+COPY . /ngen-app/nwm-verf/
+WORKDIR /ngen-app/nwm-verf/
 RUN set -eux; \
 	\
     pip3 install . ; \
     pip3 cache purge
 
-COPY ./docker/run-ngen-verf.sh /ngen-app/bin/
+COPY ./docker/run-nwm-verf.sh /ngen-app/bin/
 RUN set -eux; \
 	\
-    chmod +x /ngen-app/bin/run-ngen-verf.sh
+    chmod +x /ngen-app/bin/run-nwm-verf.sh
 
 WORKDIR /
 SHELL ["/bin/bash", "-c"]
 
-ENTRYPOINT [ "/ngen-app/bin/run-ngen-verf.sh" ] 
+ENTRYPOINT [ "/ngen-app/bin/run-nwm-verf.sh" ]
 CMD [ "--help" ]
