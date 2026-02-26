@@ -37,6 +37,7 @@ dependencies = [
     "numpy<2",
     "fastparquet",
     "tenacity",
+    "dataretrieval==1.1.0",
     "teehr @ git+https://github.com/RTIInternational/teehr@1204e014fd9e3b320d6ee5c8eea04efc524ce0a7",
 ]
 
