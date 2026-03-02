@@ -331,7 +331,8 @@ def calc_metrics(conf: dict, data_paths: dict):
                     metric_path = Path(metric_file)
 
                     if metric_path.suffix.lower() == ".parquet":
-                        if i1 == 0:
+                        # track if metric_file already exists to determine whether to write or append
+                        if not metric_file.is_file():
                             df_metrics.to_parquet(
                                 metric_file, engine="fastparquet", index=False
                             )
@@ -344,7 +345,7 @@ def calc_metrics(conf: dict, data_paths: dict):
                             )
 
                     elif metric_path.suffix.lower() == ".csv":
-                        if i1 == 0:
+                        if not metric_file.is_file():
                             df_metrics.to_csv(metric_file, index=False)
                         else:
                             # Append without writing the header
