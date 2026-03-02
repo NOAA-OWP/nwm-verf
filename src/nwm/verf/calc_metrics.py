@@ -356,13 +356,13 @@ def calc_metrics(conf: dict, data_paths: dict):
                     else:
                         raise ValueError(f"Unsupported file type: {metric_path.suffix}")
 
-            # exit if no metric files were created
-            if not metric_file.is_file():
-                msg = (
-                    f"  No metric file created for dataset {dataset} at {metric_file}. "
-                    f"Please check if paired data files are correct. Verification cannot proceed. Exiting."
-                )
-                logger.error(msg)
-                raise FileNotFoundError(msg)
-            else:
-                logger.info(f"  Metrics for dataset {dataset} written to {metric_file}")
+        # exit if no metric files were created for a dataset
+        if not metric_file.is_file():
+            msg = (
+                f"  No metric file created for dataset {dataset} at {metric_file}. "
+                f"Please check if paired data files are correct. Verification cannot proceed. Exiting."
+            )
+            logger.error(msg)
+            raise FileNotFoundError(msg)
+        else:
+            logger.info(f"  Metrics for dataset {dataset} written to {metric_file}")
