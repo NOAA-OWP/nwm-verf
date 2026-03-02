@@ -67,12 +67,12 @@ def check_metrics(metrics: list, mapping: dict, mode: str = "nwm.eval"):
     return mapped_metrics
 
 
-# function to calculate TEEHR metrics
 def calc_teehr_metrics(
     pairs: Path,
     geometry: Path,
     metrics: list[str],
 ) -> pd.DataFrame:
+    """Calculate TEEHR metrics for a given dataframe of paired data."""
     # paired data parquet
     joined_data = DuckDBJoinedParquet(
         joined_parquet_filepath=pairs, geometry_filepath=geometry
@@ -89,19 +89,11 @@ def calc_teehr_metrics(
     return gdf_all
 
 
-# function to calculate nwm.eval metrics (i.e, metrics used by nwm-cal)
 def func_calc_metrics(
     df: pd.DataFrame, metrics: list[str], lead_time: int, thresholds: list = [0.9, 0.9]
 ) -> pd.DataFrame:
-    if len(df) < 2:  # metric calculation requires data length of at least 2
-        msg = (
-            f"Insufficient data for metric calculation, lead time: {lead_time}, "
-            f"location: {df['primary_location_id'].unique()[0]} (data length: {len(df)}). "
-            f"Verification cannot proceed. Exit."
-        )
-        logger.error(msg)
-        raise Exception(msg)
-    else:
+    """Calculate nwm.eval metrics for a given dataframe of paired data."""
+    if len(df) >= 2:  # need at least 2 data points to calculate metrics
         df1 = df.copy(deep=True)
         df1 = df1.set_index("value_time", inplace=False)
         values = mf.calculate_metrics(
@@ -122,6 +114,7 @@ def calc_nwm_eval_metrics(
     metrics: list[str],
     thresholds: Optional[list] = [0.9, 0.9],
 ) -> pd.DataFrame:
+    """Calculate nwm.eval metrics for a given dataframe of paired data."""
     # read in paired data parquet
     df_pairs = pd.read_parquet(pairs)
 
@@ -152,6 +145,9 @@ def calc_nwm_eval_metrics(
             df1 = df_pairs[df_pairs["primary_location_id"] == l1]
             for l2 in lead_times:
                 df2 = df1[df1["lead_group"] == l2]
+                if df2.empty:
+                    continue  # skip empty inputs
+
                 results.append(
                     pool.apply_async(
                         func_calc_metrics, args=(df2, metrics, l2, thresholds)
@@ -159,12 +155,19 @@ def calc_nwm_eval_metrics(
                 )
 
         new_dfs = [result.get() for result in results]
-        df_metrics = pd.concat(new_dfs, ignore_index=True)
+
+        # filter out None or empty results and concatenate into a single DataFrame
+        valid_dfs = [df for df in new_dfs if df is not None and not df.empty]
+        if not valid_dfs:
+            df_metrics = pd.DataFrame()
+        else:
+            df_metrics = pd.concat(valid_dfs, ignore_index=True)
 
     return df_metrics
 
 
 def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFrame:
+    """Calculate metrics for a group of paired data."""
     # metrics to be calculated
     conf_met = conf["metrics"]
     metrics = conf_met["metric_subset"]
@@ -266,6 +269,7 @@ def calc_metrics_group(conf: dict, pair_file: Path, geofile: Path) -> pd.DataFra
 
 
 def calc_metrics(conf: dict, data_paths: dict):
+    """Calculate metrics for all datasets as specified in the config."""
     # library for calculating metrics
     supported_libraries = {"teehr", "nwm.eval"}
     if "library" not in conf["metrics"]:
@@ -289,6 +293,11 @@ def calc_metrics(conf: dict, data_paths: dict):
                 f'  Metric file {metric_file} already exist; remove the file or change "overwrite" to False to recalcualte metrics'
             )
         else:
+            # remove existing metric file if overwrite is True
+            if metric_file.is_file() and conf["metrics"]["overwrite"]:
+                logger.info(f"  Removing existing metric file {metric_file} ...")
+                metric_file.unlink()
+
             # calculate metrics for each group of paired data and append to a single parquet file
             pair_path = data_paths["joined"][dataset]
             pair_files = list(pair_path.parent.glob(f"{pair_path.stem}*.parquet"))
@@ -305,34 +314,54 @@ def calc_metrics(conf: dict, data_paths: dict):
                 else:
                     logger.info(f"  Calculating metrics for {dataset} ...")
 
-                # df_metrics = calc_metrics_group(conf, pair_file, data_paths["geofile"])
                 df_metrics = calc_metrics_group(
                     conf,
                     pair_file,
                     data_paths["crosswalk"][list(data_paths["crosswalk"].keys())[0]],
                 )
 
-                # write metrics to file
-                metric_path = Path(metric_file)
-
-                if metric_path.suffix.lower() == ".parquet":
-                    if i1 == 0:
-                        df_metrics.to_parquet(
-                            metric_file, engine="fastparquet", index=False
-                        )
-                    else:
-                        df_metrics.to_parquet(
-                            metric_file, engine="fastparquet", index=False, append=True
-                        )
-
-                elif metric_path.suffix.lower() == ".csv":
-                    if i1 == 0:
-                        df_metrics.to_csv(metric_file, index=False)
-                    else:
-                        # Append without writing the header
-                        df_metrics.to_csv(
-                            metric_file, mode="a", index=False, header=False
-                        )
-
+                if len(df_metrics) == 0:
+                    str_group = f" group {i1}" if len(pair_files) > 1 else ""
+                    logger.warning(
+                        f"  No metrics calculated for {dataset}{str_group}. Skipping writing to file."
+                    )
+                    continue
                 else:
-                    raise ValueError(f"Unsupported file type: {metric_path.suffix}")
+                    # write metrics to file
+                    metric_path = Path(metric_file)
+
+                    if metric_path.suffix.lower() == ".parquet":
+                        if i1 == 0:
+                            df_metrics.to_parquet(
+                                metric_file, engine="fastparquet", index=False
+                            )
+                        else:
+                            df_metrics.to_parquet(
+                                metric_file,
+                                engine="fastparquet",
+                                index=False,
+                                append=True,
+                            )
+
+                    elif metric_path.suffix.lower() == ".csv":
+                        if i1 == 0:
+                            df_metrics.to_csv(metric_file, index=False)
+                        else:
+                            # Append without writing the header
+                            df_metrics.to_csv(
+                                metric_file, mode="a", index=False, header=False
+                            )
+
+                    else:
+                        raise ValueError(f"Unsupported file type: {metric_path.suffix}")
+
+            # exit if no metric files were created
+            if not metric_file.is_file():
+                msg = (
+                    f"  No metric file created for dataset {dataset} at {metric_file}. "
+                    f"Please check if paired data files are correct. Verification cannot proceed. Exiting."
+                )
+                logger.error(msg)
+                raise FileNotFoundError(msg)
+            else:
+                logger.info(f"  Metrics for dataset {dataset} written to {metric_file}")
