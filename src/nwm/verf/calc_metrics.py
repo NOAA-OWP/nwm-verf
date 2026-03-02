@@ -290,7 +290,7 @@ def calc_metrics(conf: dict, data_paths: dict):
         metric_file.parent.mkdir(exist_ok=True, parents=True)
         if metric_file.is_file() and (not conf["metrics"]["overwrite"]):
             logger.info(
-                f'  Metric file {metric_file} already exist; remove the file or change "overwrite" to False to recalcualte metrics'
+                f'  Metric file {metric_file} already exists; remove the file or set "overwrite" to True to recalculate metrics'
             )
         else:
             # remove existing metric file if overwrite is True
