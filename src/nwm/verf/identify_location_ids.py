@@ -204,9 +204,47 @@ def get_usgs_gage_ids(conf: dict) -> list:
         location_list_file = Path(location_list_file).absolute()
         locations = get_gage_id_from_file(location_list_file, crosswalk_file)
     else:
-        raise ValueError(
-            "Either location_list or location_list_file must be provided in configuration yaml file"
+        # retrieve all gage IDs from crosswalk file
+        df = read_data(crosswalk_file[list(crosswalk_file.keys())[0]])
+        logger.info(
+            "  No location_list nor location_list_file is provided in the config file. "
+            "Retrieving all gage IDs from the crosswalk file..."
         )
+
+        # filter based on location filter in config
+        location_filter = conf["general"].get("location_filter", None)
+        if location_filter is not None:
+            # Normalize to lists
+            columns = location_filter["columns"]
+            if isinstance(columns, str):
+                columns = [columns]
+
+            values = location_filter["values"]
+            if isinstance(values, str):
+                values = [values]
+
+            if len(columns) != len(values):
+                msg = "location_filter columns and values must be lists of the same length"
+                logger.error(msg)
+                raise ValueError(msg)
+
+            # Apply filters
+            for column, value in zip(columns, values):
+                df = df[df[column] == value]
+
+            # Logging all filters applied
+            filters_applied = ", ".join(
+                f"{col}={val}" for col, val in zip(columns, values)
+            )
+            logger.info(
+                f"  {len(df)} gages selected using location filter: {filters_applied}."
+            )
+        else:
+            logger.info(
+                f"  All {len(df)} gages from the crosswalk file are selected without applying any location filter."
+            )
+        locations = df["primary_location_id"].tolist()
+        locations = [x.split("-")[1] for x in locations]
 
     # only accept usgs locations for now
     df = read_data(crosswalk_file[list(crosswalk_file.keys())[0]])

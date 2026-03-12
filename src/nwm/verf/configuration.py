@@ -8,8 +8,15 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
+class LocationFilter(BaseModel):
+    """Data model for filtering locations based on column values in the crosswalk file."""
+
+    columns: str | List[str]
+    values: str | List[str]
+
+
 class GeneralConfig(BaseModel):
-    """Data model for the 'general' section of the config file"""
+    """Data model for the 'general' section of the config file."""
 
     steps: Dict[str, bool]
     domain: Optional[str] = None
@@ -17,6 +24,7 @@ class GeneralConfig(BaseModel):
     location_set_name: str
     location_list: Optional[List[Union[str, int]]] = None
     location_type: Optional[str] = None
+    location_filter: Optional[LocationFilter] = None
     location_group_size: Optional[int] = 500
     variable_name: str
     nwm_configuration: str
