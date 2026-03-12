@@ -8,6 +8,7 @@ vpus=('01' '02' '03N' '03S' '03W' '04' '05' '06' '07' '08' '09' '10L' '10U' '11'
 dest_dir="$HOME/data/hydrofabric/gpkg_nhf/"
 mkdir -p "$dest_dir"
 
+id_type="vpu_id" # use "gage_id" if you want to download by gage ID instead of VPU
 for vpu in "${vpus[@]}"; do
     # skip if file already exists
     dest_file="${dest_dir}vpu_${vpu}.gpkg"
@@ -17,6 +18,6 @@ for vpu in "${vpus[@]}"; do
     fi
 
     echo "Downloading GPKG for VPU $vpu..."
-    url="https://edfs.oe.nextgenwaterprediction.com/api/v1/hydrofabric/$vpu/gpkg?id_type=vpu_id"
+    url="https://edfs.oe.nextgenwaterprediction.com/api/v1/hydrofabric/$vpu/gpkg?id_type=${id_type}"
     curl -fL --progress-bar -o "$dest_file" "$url"
 done
