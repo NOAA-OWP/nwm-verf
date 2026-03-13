@@ -214,27 +214,40 @@ def get_usgs_gage_ids(conf: dict) -> list:
         # filter based on location filter in config
         location_filter = conf["general"].get("location_filter", None)
         if location_filter is not None:
-            # Normalize to lists
             columns = location_filter["columns"]
-            if isinstance(columns, str):
-                columns = [columns]
-
             values = location_filter["values"]
-            if isinstance(values, str):
-                values = [values]
 
-            if len(columns) != len(values):
-                msg = "location_filter columns and values must be lists of the same length"
-                logger.error(msg)
-                raise ValueError(msg)
+            # Validate and normalize column names (case-insensitive match allowed)
+            available_columns = list(df.columns)
+            lower_to_actual = {c.lower(): c for c in available_columns}
+            normalized_columns: List[str] = []
+            for column in columns:
+                if column in available_columns:
+                    normalized_columns.append(column)
+                else:
+                    col_lower = column.lower()
+                    if col_lower in lower_to_actual:
+                        actual = lower_to_actual[col_lower]
+                        logger.warning(
+                            f"location_filter column '{column}' not found with exact case; "
+                            f"using '{actual}' instead based on case-insensitive match."
+                        )
+                        normalized_columns.append(actual)
+                    else:
+                        msg = (
+                            f"location_filter column '{column}' not found in crosswalk data. "
+                            f"Available columns are: {', '.join(sorted(available_columns))}"
+                        )
+                        logger.error(msg)
+                        raise ValueError(msg)
 
             # Apply filters
-            for column, value in zip(columns, values):
+            for column, value in zip(normalized_columns, values):
                 df = df[df[column] == value]
 
             # Logging all filters applied
             filters_applied = ", ".join(
-                f"{col}={val}" for col, val in zip(columns, values)
+                f"{col}={val}" for col, val in zip(normalized_columns, values)
             )
             logger.info(
                 f"  {len(df)} gages selected using location filter: {filters_applied}."

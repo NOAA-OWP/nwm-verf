@@ -156,6 +156,31 @@ def create_gage_list(gdf_cwt: gpd.GeoDataFrame, out_dir: str | Path, domain: str
         print(f"Gage list for VPU {vpu} saved to {gage_file} with {len(df_vpu)} gages.")
 
 
+def _format_primary_location_id(value):
+    """Safely format primary_location_id with the appropriate prefix.
+
+    Handles non-string types and missing values before applying length-based logic.
+    """
+    # Handle missing values explicitly
+    if pd.isna(value):
+        return value
+
+    # Coerce to string
+    s = str(value).strip()
+
+    # Normalize common float representations like '123.0' to '123'
+    if s.endswith(".0"):
+        s = s[:-2]
+
+    # Apply existing length-based prefix logic
+    if len(s) == 3:
+        return f"cadwr-{s}"
+    elif len(s) == 7:
+        return f"envca-{s}"
+    else:
+        return f"usgs-{s}"
+
+
 def main(domain: str = "conus", out_dir: str | Path = ".") -> Path:
     """Create ngen divide crosswalk for all gages for regionalization evaluation."""
     if domain.lower() not in ALL_VPUS.keys():
@@ -168,6 +193,12 @@ def main(domain: str = "conus", out_dir: str | Path = ".") -> Path:
     gdfs = [create_crosswalk(domain, vpu, out_dir) for vpu in ALL_VPUS[domain.lower()]]
     gdfs = [gdf for gdf in gdfs if not gdf.empty]
 
+    if not gdfs:
+        raise ValueError(
+            f"No non-empty crosswalk GeoDataFrames were created for domain '{domain}'. "
+            "Check that the expected NHF GeoPackages exist and contain a 'gages' layer."
+        )
+
     # concatenate all gage crosswalks into one GeoDataFrame
     gdf_cwt = gpd.GeoDataFrame(
         pd.concat(gdfs, ignore_index=True), geometry="geometry", crs=gdfs[0].crs
@@ -175,9 +206,7 @@ def main(domain: str = "conus", out_dir: str | Path = ".") -> Path:
 
     # add prefix to primary_location_id
     gdf_cwt["primary_location_id"] = gdf_cwt["primary_location_id"].apply(
-        lambda x: "cadwr-" + str(x)
-        if len(x) == 3
-        else ("envca-" + str(x) if len(x) == 7 else "usgs-" + str(x))
+        _format_primary_location_id
     )
 
     # add prefix "ngen-" to secondary_location_id
