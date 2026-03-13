@@ -6,6 +6,7 @@ import warnings
 from pathlib import Path
 
 import aiohttp
+import dask
 import dataretrieval.nwis as nwis
 import pandas as pd
 import teehr.loading.nwm.nwm_points as tlp
@@ -26,6 +27,9 @@ warnings.filterwarnings("ignore", message="Compute Engine Metadata server unavai
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Disable worker profiling
+dask.config.set({"distributed.worker.profile.enabled": False})
 
 
 def get_fcst_info(conf: dict) -> tuple[int, int, pd.Timestamp]:
@@ -531,7 +535,6 @@ def retrieve_fcsts_ngencerf(locations: dict, conf: dict, data_paths: dict):
         df_fcst["measurement_unit"] = "m3/s"
 
         # get the location_id for the forecast data
-        print(f"locations for {dataset}: {locations}")
         loc_fcst_list = list(
             {item for subdict in locations.values() for item in subdict["secondary"]}
         )
@@ -687,20 +690,18 @@ def retrieve_fcsts_gcs(locations: dict, conf: dict, data_paths: dict):
 
 def extract_flow_for_gages(
     nc_file: Path,
-    crosswalk_file: Path,
-    gage_file: Path,
+    locations: dict,
     start_time: pd.Timestamp = None,
     end_time: pd.Timestamp = None,
     flow_var: str = "flow",
     feature_id_var: str = "feature_id",
     time_var: str = "time",
 ) -> pd.DataFrame:
-    """Extract time and flow for specific gages from a NetCDF file using a crosswalk.
+    """Extract time and flow for specific gages from a NetCDF file.
 
     Args:
         nc_file: Path to NetCDF file.
-        crosswalk_file: Path to parquet crosswalk file with columns ['primary_location_id', 'secondary_location_id'].
-        gage_file: Path to CSV file with gage IDs (primary_location_id) to include.
+        locations: dictionary containing secondary ID (NWM link IDs) and primary ID (USGS gage IDs)
         start_time: Start time for filtering (optional).
         end_time: End time for filtering (optional).
         flow_var: Name of flow variable in NetCDF.
@@ -708,38 +709,14 @@ def extract_flow_for_gages(
         time_var: Name of time variable in NetCDF.
 
     Returns:
-        pd.DataFrame with columns ['time', 'primary_location_id', 'flow'].
+        pd.DataFrame with columns ['time', 'location_id', 'value'].
 
     """
-    # Read crosswalk
-    cwt_df = read_data(crosswalk_file)
-
-    # Read list of gages to include
-    gages_df = pd.read_csv(gage_file, dtype=str, header=0, names=["gage"])
-    gage_list = set(gages_df["gage"])
-
-    # Filter crosswalk to only gages in the gage list
-    cwt_df["primary_location_id"] = cwt_df["primary_location_id"].str.replace(
-        "^usgs-", "", regex=True
-    )
-    cwt_df["secondary_location_id"] = cwt_df["secondary_location_id"].str.replace(
-        "^ngen-", "", regex=True
-    )
-    cwt_df = cwt_df[cwt_df["primary_location_id"].isin(gage_list)]
-
-    # convert secondary_location_id to integer (feature_id in NetCDF is integer)
-    cwt_df["secondary_location_id"] = cwt_df["secondary_location_id"].astype(int)
-
-    # Map secondary_location_id to primary_location_id
-    feature_to_gage = dict(
-        zip(cwt_df["secondary_location_id"], cwt_df["primary_location_id"])
-    )
-
     # Open NetCDF
     ds = xr.open_dataset(nc_file)
 
-    # Select only the feature_ids in the crosswalk
-    feature_ids = list(feature_to_gage.keys())
+    # define feature_ids based on the secondary ids in locations
+    feature_ids = [int(x.replace("ngen-", "")) for x in locations["secondary"]]
 
     # Flow is [time, feature_id]
     flow_data = ds[flow_var].sel({feature_id_var: feature_ids})
@@ -771,7 +748,7 @@ def extract_flow_for_gages(
     return df
 
 
-def retrieve_ngen_simulation(conf: dict, data_paths: dict):
+def retrieve_ngen_simulation(locations: dict, conf: dict, data_paths: dict):
     """Retrieve NGEN simulation data for the specified configuration.
 
     Based on the data source specified in the configuration, the appropriate retrieval function is called.
@@ -785,14 +762,18 @@ def retrieve_ngen_simulation(conf: dict, data_paths: dict):
         fcst_file = conf["file_paths"]["fcst_data_file"][dataset]
         df_sim = extract_flow_for_gages(
             nc_file=Path(fcst_file),
-            crosswalk_file=Path(conf["file_paths"]["crosswalk_file"][nwm_ver]),
-            gage_file=Path(conf["file_paths"]["location_list_file"]),
+            locations=locations[dataset],
             start_time=pd.to_datetime(conf["general"]["eval_start_date"][idx]),
             end_time=pd.to_datetime(conf["general"]["eval_end_date"][idx]),
             flow_var="flow",
             feature_id_var="feature_id",
             time_var="time",
         )
+
+        if df_sim.empty:
+            msg = f"No simulation data found for {fcst_file} after extraction. Verification cannot proceed. Exit."
+            logger.error(msg)
+            raise ValueError(msg)
 
         # add additional columns to match the format expected by teehr
         df_sim["reference_time"] = df_sim["value_time"]
@@ -822,7 +803,7 @@ def retrieve_fcsts(locations: dict, conf: dict, data_paths: dict):
     elif conf["nwm_forecast"]["data_source"].upper() == "NGENCERF":
         retrieve_fcsts_ngencerf(locations, conf, data_paths)
     elif conf["nwm_forecast"]["data_source"].upper() == "NGENSIM":
-        retrieve_ngen_simulation(conf, data_paths)
+        retrieve_ngen_simulation(locations, conf, data_paths)
     else:
         msg = (
             f"Data source {conf['nwm_forecast']['data_source']} not recognized. "

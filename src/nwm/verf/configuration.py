@@ -8,8 +8,63 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
+class LocationFilter(BaseModel):
+    """Data model for filtering locations based on column values in the crosswalk file."""
+
+    columns: str | List[str]
+    values: str | List[str]
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_and_validate(cls, data):
+        """Normalize columns/values to lists and ensure they have matching lengths.
+
+        This allows configs to specify either a single string or a list for each field,
+        while guaranteeing that downstream code always receives lists of equal length.
+        """
+        if data is None:
+            return data
+
+        # If another validator has already constructed a LocationFilter instance, just return it unchanged.
+        if isinstance(data, cls):
+            return data
+
+        if not isinstance(data, dict):
+            return data
+
+        columns = data.get("columns")
+        values = data.get("values")
+
+        # If either field is missing, let Pydantic's own validation handle it.
+        if columns is None or values is None:
+            return data
+
+        # Normalize columns to a list of strings.
+        if isinstance(columns, str):
+            columns_list = [columns]
+        else:
+            columns_list = list(columns)
+
+        # Normalize values to a list of strings.
+        if isinstance(values, str):
+            values_list = [values]
+        else:
+            values_list = list(values)
+
+        # Ensure columns and values lists have the same length.
+        if len(columns_list) != len(values_list):
+            raise ValueError(
+                "LocationFilter configuration error: 'columns' and 'values' must have the same length."
+            )
+
+        data["columns"] = columns_list
+        data["values"] = values_list
+
+        return data
+
+
 class GeneralConfig(BaseModel):
-    """Data model for the 'general' section of the config file"""
+    """Data model for the 'general' section of the config file."""
 
     steps: Dict[str, bool]
     domain: Optional[str] = None
@@ -17,6 +72,7 @@ class GeneralConfig(BaseModel):
     location_set_name: str
     location_list: Optional[List[Union[str, int]]] = None
     location_type: Optional[str] = None
+    location_filter: Optional[LocationFilter] = None
     location_group_size: Optional[int] = 500
     variable_name: str
     nwm_configuration: str

@@ -99,7 +99,7 @@ def export_location_groups_with_lead_time(
 
     # Check row count
     row_count = con.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-    logger.info(f"{table_name} row count: {row_count}")
+    logger.debug(f"{table_name} row count: {row_count}")
 
     if row_count == 0:
         raise Exception(
