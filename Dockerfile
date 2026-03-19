@@ -1,6 +1,33 @@
 ## TODO: replace with base image created under NGWPC-3223 ##
 ## see: https://jira.nextgenwaterprediction.com/browse/NGWPC-3223
-FROM rockylinux:8
+ARG BASE_REPO=rockylinux
+ARG BASE_TAG=8
+
+FROM ${BASE_REPO}:${BASE_TAG}
+
+# OCI Metadata Arguments
+ARG BASE_REPO
+ARG BASE_TAG
+ARG BASE_NAME="${BASE_REPO}:${BASE_TAG}"
+ARG BASE_DIGEST="unknown"
+ARG BASE_REVISION="unknown"
+ARG IMAGE_SOURCE="unknown"
+ARG IMAGE_VENDOR="unknown"
+ARG IMAGE_VERSION="unknown"
+ARG IMAGE_REVISION="unknown"
+ARG IMAGE_CREATED="unknown"
+
+# OCI Standard Labels
+LABEL org.opencontainers.image.base.name="${BASE_NAME}" \
+    org.opencontainers.image.base.digest="${BASE_DIGEST}" \
+    io.ngwpc.image.base.revision="${BASE_REVISION}" \
+    org.opencontainers.image.source="${IMAGE_SOURCE}" \
+    org.opencontainers.image.vendor="${IMAGE_VENDOR}" \
+    org.opencontainers.image.version="${IMAGE_VERSION}" \
+    org.opencontainers.image.revision="${IMAGE_REVISION}" \
+    org.opencontainers.image.created="${IMAGE_CREATED}" \
+    org.opencontainers.image.title="NWM Verification" \
+    org.opencontainers.image.description="Docker image for the NWM verification application"
 
 
 # ensure local python is preferred over distribution python
@@ -111,10 +138,10 @@ RUN set -eux; \
         python3.10 -m venv ${VIRTUAL_ENV}
 ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
 
-ARG NWM_EVAL_MGR_TAG=development
+ARG NWM_EVAL_MGR_REF=development
 RUN set -eux; \
 	\
-    pip3 install "git+https://github.com/NGWPC/nwm-eval-mgr.git@${NWM_EVAL_MGR_TAG}" ; \
+    pip3 install "git+https://github.com/NGWPC/nwm-eval-mgr.git@${NWM_EVAL_MGR_REF}" ; \
     pip3 cache purge
 
 COPY . /ngen-app/nwm-verf/
