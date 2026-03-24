@@ -1,5 +1,3 @@
-## TODO: replace with base image created under NGWPC-3223 ##
-## see: https://jira.nextgenwaterprediction.com/browse/NGWPC-3223
 ARG BASE_REPO=rockylinux
 ARG BASE_TAG=8
 
