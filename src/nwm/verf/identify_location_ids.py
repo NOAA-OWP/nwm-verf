@@ -287,6 +287,18 @@ def identify_locations(conf: dict) -> dict:
             locations_usgs, conf["file_paths"]["crosswalk_file"][nwm_version]
         )
         logger.info(f"  Total number of locations for {dataset}: {len(locations_nwm1)}")
+
+        if len(locations_nwm1) > 1 and conf["nwm_forecast"]["data_source"] in [
+            "ngencerf",
+            "hindcast",
+        ]:
+            logger.warning(
+                f"  More than one locations are found for dataset {dataset} based on the provided location_list and crosswalk file. "
+                f"Only the first location will be used for verification of this dataset."
+            )
+            locations_nwm1 = locations_nwm1[:1]
+            locations_usgs1 = locations_usgs1[:1]
+
         locations[dataset] = {"primary": locations_usgs1, "secondary": locations_nwm1}
 
     return locations

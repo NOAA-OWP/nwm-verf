@@ -32,28 +32,17 @@ logger = logging.getLogger(__name__)
 dask.config.set({"distributed.worker.profile.enabled": False})
 
 
-def get_fcst_info(conf: dict) -> tuple[int, int, pd.Timestamp]:
+def get_fcst_info(conf: dict) -> tuple[int, int, list[pd.Timestamp]]:
     """Get the forecast window size, time step, and reference time for a given NWM configuration."""
     # validate forecast cycle
     nwm_config = conf["general"]["nwm_configuration"]
     fc = ForecastConfig(conf["file_paths"]["fcst_config_file"])
     fc.validate_cycle_info(nwm_config)
 
-    # define reference time
-    reference_time = pd.to_datetime(conf["general"]["forecast_start_date"][0])
-
-    if reference_time.hour not in fc.get_valid_cycles(nwm_config):
-        msg = f"Invalid hour/cycle ({reference_time.hour}) for forecast_start_date. "
-        msg += f"Valid cycles are: {fc.get_valid_cycles(nwm_config)}"
-        logger.error(msg)
-        raise ValueError(msg)
-
     # get time step and forecast window for the configuration and cycle
-    win_size, time_step = fc.get_fcst_window_timestep(
-        nwm_config, int(reference_time.hour)
-    )
+    win_size, time_step = fc.get_fcst_window_timestep(nwm_config)
 
-    return win_size, time_step, reference_time
+    return win_size, time_step
 
 
 def check_existing_obs_data(obs_dir: str | Path) -> list:
@@ -114,7 +103,7 @@ def check_missing_obs_data(obs_dir: str | Path, conf: dict, gages: list):
     # Get required observation dates
     time_step = 1
     if conf["general"]["nwm_configuration"] != "ngen_simulation":
-        fcst_win, time_step, _ = get_fcst_info(conf)
+        fcst_win, time_step = get_fcst_info(conf)
     conf1 = conf["general"]
     for i1, dataset in enumerate(conf1["dataset_name"]):
         if conf1["nwm_configuration"] == "ngen_simulation":
@@ -130,7 +119,7 @@ def check_missing_obs_data(obs_dir: str | Path, conf: dict, gages: list):
         required_dates = create_time_sequence(start_date, end_date, freq_hour=time_step)
 
         # Check for missing data. For ngenCERF (single gage), check by dates; otherwise, check by gages
-        if conf["nwm_forecast"]["data_source"] == "ngenCERF":
+        if conf["nwm_forecast"]["data_source"].upper() == "NGENCERF":
             # Check for missing dates
             max_show = 5  # number of dates to show in logging
             missing_dates = [d for d in required_dates if d not in existing_dates]
@@ -355,7 +344,7 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
             fcst_win1 = 0
             timestep1 = 1
         else:
-            fcst_win1, timestep1, reference_time = get_fcst_info(conf)
+            fcst_win1, timestep1 = get_fcst_info(conf)
 
         # adjust start/end date based on forecast window
         if fcst_win1 < 0:
@@ -466,96 +455,156 @@ def retrieve_usgs_obs(locations: dict, conf: dict, output_dir: Path):
     check_missing_obs_data(output_dir, conf, list_usgs)
 
 
+def get_fcst_files(conf: dict, dataset: str) -> list[Path]:
+    """Get the list of forecast files for a given dataset."""
+    fcst_path = conf["file_paths"].get("fcst_data_dir", None)
+    if fcst_path:
+        fcst_path = Path(fcst_path[dataset])
+        if not fcst_path.exists():
+            msg = f"Forecast data path {fcst_path} does not exist for dataset {dataset}. Verification cannot proceed. Exit."
+            logger.error(msg)
+            raise FileNotFoundError(msg)
+
+    fcst_file = conf["file_paths"].get("fcst_data_file", None)
+
+    if fcst_file:
+        if fcst_path:
+            # make sure fcst_file is a string (not a dictionary)
+            if isinstance(fcst_file, dict):
+                msg = (
+                    "fcst_data_file should be a string pattern when fcst_data_dir is specified, "
+                    f"but got a dictionary for dataset {dataset}. Verification cannot proceed. Exit."
+                )
+                logger.error(msg)
+                raise ValueError(msg)
+
+            # identify all forecast files recursively in fcst_path that match the fcst_file pattern
+            fcst_files = list(fcst_path.rglob(fcst_file))
+        else:
+            if isinstance(fcst_file, dict):
+                fcst_files = [Path(fcst_file[dataset])]
+            else:
+                fcst_files = [Path(fcst_file)]
+    else:
+        if conf["nwm_forecast"]["data_source"].upper() != "GCS":
+            msg = f"fcst_data_file not specified in configuration for dataset {dataset}. Verification cannot proceed. Exit."
+            logger.error(msg)
+            raise ValueError(msg)
+
+    if not fcst_files:
+        msg = f"No forecast files found for dataset {dataset} with the specified configuration. Verification cannot proceed. Exit."
+        logger.error(msg)
+        raise FileNotFoundError(msg)
+
+    return fcst_files
+
+
 def retrieve_fcsts_ngencerf(locations: dict, conf: dict, data_paths: dict):
     """Retrieve NWM forecasts given the configurations and list of locations from the NGENCERF data source.
 
     The forecast files are generated by ngenCERF on the server.
     """
     # get time step and forecast window for the configuration and cycle
-    win_size, time_step, reference_time = get_fcst_info(conf)
-
-    # Define time window for forecasts
-    if win_size >= 0:
-        start_time = reference_time + pd.Timedelta(hours=time_step)
-        end_time = start_time + pd.Timedelta(hours=win_size - time_step).round("s")
-    else:
-        start_time = reference_time + pd.Timedelta(hours=win_size + time_step)
-        end_time = reference_time
+    win_size, time_step = get_fcst_info(conf)
 
     # read forecast data from file for each dataset
     for dataset in conf["general"]["dataset_name"]:
         logger.info(f"  Retrieving forecast data for {dataset} ...")
 
-        fcst_file = conf["file_paths"]["fcst_data_file"][dataset]
-        df_fcst = read_data(fcst_file, dtype={"sim_flow": float}, parse_dates=["Time"])
+        fcst_files = get_fcst_files(conf, dataset)
 
-        if df_fcst.empty:
-            logger.warning(f"No forecast data found for {fcst_file}")
-            return
-
-        # order the dataframe by time
-        df_fcst = df_fcst.sort_values("Time")
-
-        # make sure the time period covers the forecast window
-        if df_fcst["Time"].min() > start_time or df_fcst["Time"].max() < end_time:
-            msg = (
-                f"Forecast time period {start_time} to {end_time} is not covered by data. "
-                f"Available data time period is {df_fcst['Time'].min()} to {df_fcst['Time'].max()}"
+        for fcst_file in fcst_files:
+            df_fcst = read_data(
+                fcst_file, dtype={"sim_flow": float}, parse_dates=["Time"]
             )
-            logger.warning(msg)
+            # make sure the required columns are present
+            if not {"Time", "sim_flow"}.issubset(df_fcst.columns):
+                logger.warning(
+                    f"Required columns 'Time' and 'sim_flow' not found in forecast file {fcst_file}. Skipping this file."
+                )
+                continue
 
-        # if extra data is found, give warning too
-        if df_fcst["Time"].max() > end_time or df_fcst["Time"].min() < start_time:
-            msg = (
-                f"Extra forecast data found beyond the expected time period: "
-                f"Available data time period is {df_fcst['Time'].min()} to {df_fcst['Time'].max()}. "
-                f"Expected time period is {start_time} to {end_time}."
+            if df_fcst.empty:
+                logger.warning(f"No data found in forecast file {fcst_file}")
+                continue
+
+            # order the dataframe by time
+            df_fcst = df_fcst.sort_values("Time")
+
+            # assume reference time is one time step before the first time in the forecast data
+            start_time = df_fcst["Time"].min()
+            end_time = start_time + pd.Timedelta(hours=win_size - time_step)
+            reference_time = start_time - pd.Timedelta(hours=time_step)
+
+            # make sure the time period covers the forecast window
+            if df_fcst["Time"].max() < end_time:
+                msg = (
+                    f"Forecast time period {start_time} to {end_time} is not covered by data. "
+                    f"Available data time period is {start_time} to {df_fcst['Time'].max()}"
+                )
+                logger.warning(msg)
+
+            # if extra data is found, give warning too
+            if df_fcst["Time"].max() > end_time:
+                msg = (
+                    f"Extra forecast data found beyond the expected time period: "
+                    f"Available data time period is {start_time} to {df_fcst['Time'].max()}. "
+                    f"Expected time period is {start_time} to {end_time}."
+                )
+                logger.warning(msg)
+
+            # filter data by the overlapping period
+            df_fcst = df_fcst[
+                (df_fcst["Time"] >= start_time) & (df_fcst["Time"] <= end_time)
+            ]
+
+            # make sure every time step is covered
+            all_times = pd.date_range(
+                start=start_time, end=end_time, freq=f"{time_step}H"
             )
-            logger.warning(msg)
+            missing_times = all_times[~all_times.isin(df_fcst["Time"])]
+            if not missing_times.empty:
+                msg = f"Missing forecast data for time steps: {missing_times.min()} to {missing_times.max()}"
+                logger.warning(msg)
 
-        # filter data by the overlapping period
-        df_fcst = df_fcst[
-            (df_fcst["Time"] >= start_time) & (df_fcst["Time"] <= end_time)
-        ]
-
-        # make sure every time step is covered
-        all_times = pd.date_range(start=start_time, end=end_time, freq=f"{time_step}H")
-        missing_times = all_times[~all_times.isin(df_fcst["Time"])]
-        if not missing_times.empty:
-            msg = f"Missing forecast data for time steps: {missing_times.min()} to {missing_times.max()}"
-            logger.warning(msg)
-
-        # rename columns to match the format expected by teehr
-        df_fcst = df_fcst.rename(columns={"sim_flow": "value", "Time": "value_time"})
-
-        # add additional columns to match the format expected by teehr
-        df_fcst["reference_time"] = reference_time
-        df_fcst["configuration"] = conf["general"]["nwm_configuration"]
-        df_fcst["variable_name"] = conf["general"]["variable_name"]
-        df_fcst["measurement_unit"] = "m3/s"
-
-        # get the location_id for the forecast data
-        loc_fcst_list = list(
-            {item for subdict in locations.values() for item in subdict["secondary"]}
-        )
-        if len(loc_fcst_list) == 0:
-            msg = "No secondary_location_id found in locations for forecast data. Verification cannot proceed."
-            logger.error(msg)
-            raise ValueError(msg)
-        if len(loc_fcst_list) > 1:
-            logger.warning(
-                "Multiple secondary_location_id found in locations. Using the first one for location_id in forecast data."
+            # rename columns to match the format expected by teehr
+            df_fcst = df_fcst.rename(
+                columns={"sim_flow": "value", "Time": "value_time"}
             )
-        df_fcst["location_id"] = (
-            conf["general"]["nwm_version"][0] + "-" + str(loc_fcst_list[0])
-        )
 
-        # save forecast data to parquet files
-        output_file = Path(
-            data_paths.get("fcst_link").get(dataset)
-        ) / start_time.strftime("%Y%m%dT%H.parquet")
-        save_data(df_fcst, output_file)
-        logger.info(f"  Forecast data saved to {output_file}")
+            # add additional columns to match the format expected by teehr
+            df_fcst["reference_time"] = reference_time
+            df_fcst["configuration"] = conf["general"]["nwm_configuration"]
+            df_fcst["variable_name"] = conf["general"]["variable_name"]
+            df_fcst["measurement_unit"] = "m3/s"
+
+            # get the location_id for the forecast data
+            loc_fcst_list = list(
+                {
+                    item
+                    for subdict in locations.values()
+                    for item in subdict["secondary"]
+                }
+            )
+            if len(loc_fcst_list) == 0:
+                msg = "No secondary_location_id found in locations for forecast data. Verification cannot proceed."
+                logger.error(msg)
+                raise ValueError(msg)
+            if len(loc_fcst_list) > 1:
+                logger.warning(
+                    "Multiple secondary_location_id found in locations. Using the first one for location_id in forecast data."
+                )
+            df_fcst["location_id"] = (
+                conf["general"]["nwm_version"][0] + "-" + str(loc_fcst_list[0])
+            )
+
+            # save forecast data to parquet files
+            output_file = Path(
+                data_paths.get("fcst_link").get(dataset)
+            ) / reference_time.strftime("%Y%m%dT%H.parquet")
+            save_data(df_fcst, output_file)
+
+        logger.info(f"  Forecast data for {dataset} saved to {output_file.parent}")
 
 
 def retrieve_fcsts_gcs(locations: dict, conf: dict, data_paths: dict):
@@ -759,7 +808,16 @@ def retrieve_ngen_simulation(locations: dict, conf: dict, data_paths: dict):
     ):
         logger.info(f"  Retrieving forecast data for dataset {dataset} ...")
 
-        fcst_file = conf["file_paths"]["fcst_data_file"][dataset]
+        # for ngen simulation, there should be only one file for each dataset
+        fcst_files = get_fcst_files(conf, dataset)
+        fcst_file = fcst_files[0]
+
+        # make sure fcst_file is a valid file
+        if not Path(fcst_file).is_file():
+            msg = f"Forecast file {fcst_file} does not exist. Verification cannot proceed. Exit."
+            logger.error(msg)
+            raise ValueError(msg)
+
         df_sim = extract_flow_for_gages(
             nc_file=Path(fcst_file),
             locations=locations[dataset],
@@ -798,16 +856,16 @@ def retrieve_fcsts(locations: dict, conf: dict, data_paths: dict):
 
     Based on the data source specified in the configuration, the appropriate retrieval function is called.
     """
-    if conf["nwm_forecast"]["data_source"].upper() in ["GCS", "NOMADS", "DSTOR"]:
+    if conf["nwm_forecast"]["data_source"].upper() == "GCS":
         retrieve_fcsts_gcs(locations, conf, data_paths)
-    elif conf["nwm_forecast"]["data_source"].upper() == "NGENCERF":
+    elif conf["nwm_forecast"]["data_source"].upper() in ["NGENCERF", "HINDCAST"]:
         retrieve_fcsts_ngencerf(locations, conf, data_paths)
     elif conf["nwm_forecast"]["data_source"].upper() == "NGENSIM":
         retrieve_ngen_simulation(locations, conf, data_paths)
     else:
         msg = (
             f"Data source {conf['nwm_forecast']['data_source']} not recognized. "
-            f"Supported data sources are 'GCS', 'NOMADS', 'DSTOR', 'NGENCERF', and 'NGENSIM'."
+            f"Supported data sources are (case insensitive) 'GCS', 'NGENSIM', 'NGENCERF', and 'HINDCAST'."
         )
         logger.error(msg)
         raise ValueError(msg)

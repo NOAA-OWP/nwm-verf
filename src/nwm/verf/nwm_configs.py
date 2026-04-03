@@ -144,13 +144,40 @@ class ForecastConfig:
             str(l1) if l1 >= 0 else "m" + str(abs(l1)) for l1 in existing_leads
         ]  # ensure all are strings, prepend 'm' for negative leads
 
-        if "all" in lead_times:
-            lead_times = [str(i) for i in existing_leads] + [
-                x for x in lead_times if x != "all"
-            ]
-        elif "all_aggregated" in lead_times:
-            lead_times = [str(existing_leads[0]) + "-" + str(existing_leads[-1])] + [
-                x for x in lead_times if x != "all_aggregated"
-            ]
+        interpreted_leads = []
+        for lt in lead_times:
+            if lt == "all":
+                interpreted_leads.extend(existing_leads)
+            elif lt == "all_aggregated":
+                if existing_leads:
+                    interpreted_leads.append(
+                        f"{existing_leads[0]}-{existing_leads[-1]}"
+                    )
+            elif "-" in lt:  # range like "1-5"
+                start_str, end_str = lt.split("-")
+                try:
+                    start, end = int(start_str), int(end_str)
+                except ValueError:
+                    logger.warning(
+                        f"Invalid lead_time range '{lt}'. Start and end must be integers. Skip this lead time."
+                    )
+                # make sure start and end are in existing_leads
+                if start_str not in existing_leads or end_str not in existing_leads:
+                    logger.warning(
+                        f"Lead time range '{lt}' has start or end not in existing leads {existing_leads}. Skip this lead time."
+                    )
+                else:
+                    interpreted_leads.append(lt)
+
+            else:  # single lead time
+                if lt in existing_leads:
+                    interpreted_leads.append(lt)
+                else:
+                    logger.info(
+                        f"Lead time '{lt}' not found in existing leads {existing_leads}. Skip this lead time."
+                    )
+
+        # remove duplicated lead times while preserving order
+        lead_times = list(dict.fromkeys(interpreted_leads))
 
         return lead_times, missing_leads, timestep
