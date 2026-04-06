@@ -75,11 +75,11 @@ def filter_by_lead_metric(
         x = str(x)
 
         if x.startswith("m"):
-            return (0, int(x[1:]))  # m-values first
+            return (0, float(x[1:]))  # m-values first
         elif "-" in x:
-            return (2, int(x.split("-")[0]))  # ranges last
+            return (2, float(x.split("-")[0]))  # ranges last
         else:
-            return (1, int(x))  # singles in the middle
+            return (1, float(x))  # singles in the middle
 
     df_metrics["lead_group"] = pd.Categorical(
         df_metrics["lead_group"].astype(str),
