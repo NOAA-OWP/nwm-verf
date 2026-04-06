@@ -71,11 +71,23 @@ def filter_by_lead_metric(
         df_metrics = df_metrics[df_metrics["metric"].isin(metrics)]
 
     # sort the data by lead times as shown in the configuration
-    if lead_times:
-        df_metrics["lead_group"] = pd.Categorical(
-            df_metrics["lead_group"].astype(str), categories=leads0, ordered=True
-        )
-        df_metrics = df_metrics.sort_values("lead_group")
+    def lead_key(x):
+        x = str(x)
+
+        if x.startswith("m"):
+            return (0, int(x[1:]))  # m-values first
+        elif "-" in x:
+            return (2, int(x.split("-")[0]))  # ranges last
+        else:
+            return (1, int(x))  # singles in the middle
+
+    df_metrics["lead_group"] = pd.Categorical(
+        df_metrics["lead_group"].astype(str),
+        categories=sorted(df_metrics["lead_group"].unique(), key=lead_key),
+        ordered=True,
+    )
+
+    df_metrics = df_metrics.sort_values("lead_group")
 
     return df_metrics
 
@@ -830,10 +842,11 @@ def create_time_series(conf: dict, data_paths: dict):
     lead_times = conf["plots"]["time_series"].get("lead_times", [])
     ref_times = conf["plots"]["time_series"].get("reference_times", [])
     if not lead_times and not ref_times:
-        ref_times = [merged_df["reference_time"].iloc[0]]
+        ref_times = merged_df["reference_time"].min()
+        ref_times = [ref_times]
         logger.info(
             "No lead times or reference times specified for time series plot; "
-            f"using the first reference time {ref_times} in the data."
+            f"using the earliest reference time {ref_times} in the data."
         )
     ref_times = list(pd.to_datetime(ref_times, errors="coerce"))
 
@@ -1177,4 +1190,12 @@ def create_all_plots(conf: dict, data_paths: dict):
     for plot_type, func in plot_functions.items():
         plot_conf = conf["plots"].get(plot_type) or {}
         if plot_conf.get("plot", False):
+            if plot_type != "time_series":
+                for [str, str1] in zip(
+                    ["metric_subset", "lead_times"], ["metrics", "lead times"]
+                ):
+                    if str not in plot_conf or not plot_conf[str]:
+                        logger.warning(
+                            f"{str} not specified for {plot_type} plot. Using all available {str1}."
+                        )
             func(conf, data_paths)
