@@ -70,7 +70,7 @@ def filter_by_lead_metric(
             raise Exception(f"Metrics {mts1} not found in computed metric results")
         df_metrics = df_metrics[df_metrics["metric"].isin(metrics)]
 
-    # sort the data by lead times as shown in the configuration
+    # sort the data by lead times in a logical order (e.g., 1, 2, 3, ..., 12, 1-5, 6-10, etc.)
     def lead_key(x):
         x = str(x)
 
