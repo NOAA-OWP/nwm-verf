@@ -1,7 +1,9 @@
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+import pandas as pd
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
@@ -96,6 +98,7 @@ class FilePathsConfig(BaseModel):
     crosswalk_file: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = None
     fcst_config_file: Optional[str | Path] = None
     fcst_data_file: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = None
+    fcst_data_dir: Optional[Path | str | Dict[str, Path] | Dict[str, str]] = None
     calib_param_file: Optional[Path | str] = None
     txdot_gage_file: Optional[Path | str] = None
     output_dir: str | Path
@@ -139,7 +142,22 @@ class LeadTimesMixin(BaseModel):
     def normalize_lead_times(cls, v):
         if v is None:
             return []
+        if not isinstance(v, list):
+            v = [v]
         return [str(lt) for lt in v]
+
+
+class ReferenceTimesMixin(BaseModel):
+    reference_times: Optional[List[datetime]] = None
+
+    @field_validator("reference_times", mode="before")
+    @classmethod
+    def normalize_reference_times(cls, v):
+        if v is None:
+            return []
+        if not isinstance(v, list):
+            v = [v]
+        return [pd.to_datetime(rt).to_pydatetime() for rt in v]
 
 
 class MetricsConfig(LeadTimesMixin):
@@ -183,10 +201,40 @@ class SpatialMapConfig(BasePlotConfig):
     scaling: Optional[Dict[str, List[Number]]] = None
 
 
-class TimeSeriesConfig(BasePlotConfig):
-    """Config for time series plots"""
+class TimeSeriesConfig(BasePlotConfig, ReferenceTimesMixin):
+    """Config for time series plots."""
 
-    pass
+    lead_times: Optional[List[int]] = None
+
+    @field_validator("lead_times", mode="before")
+    @classmethod
+    def validate_lead_times(cls, v):
+        """Validate that lead_times is a list of integers or numeric strings, and convert to integers."""
+        if v is None:
+            return None
+        if not isinstance(v, list):
+            raise ValueError("lead_times must be a list")
+
+        cleaned = []
+        for item in v:
+            # Accept int directly
+            if isinstance(item, int):
+                cleaned.append(item)
+
+            # Accept numeric strings like "6"
+            elif isinstance(item, str):
+                if item.isdigit():
+                    cleaned.append(int(item))
+                else:
+                    logger.info(
+                        f"Invalid lead_time '{item}'. Must be integer-like (e.g., '6'), not ranges like '1-5'. Skip this lead time."
+                    )
+            else:
+                logger.info(
+                    f"Invalid type {type(item)} in lead_times. Must be int or numeric string. Skip this lead time."
+                )
+
+        return cleaned or None
 
 
 class TablePlotConfig(BasePlotConfig):
@@ -225,25 +273,29 @@ class Config(BaseModel):
 
     @model_validator(mode="after")
     def check_forecast_data_file(self):
-        """Make sure forecast data file is provided for ngenCERF."""
+        """Make sure forecast data file and/or directory is provided except for GCS."""
         if (
-            self.nwm_forecast.data_source == "ngenCERF"
+            self.nwm_forecast.data_source.upper() != "GCS"
             and self.file_paths.fcst_data_file is None
+            and self.file_paths.fcst_data_dir is None
         ):
-            msg = "file_paths.fcst_data_file must be provided when "
-            msg += "nwm_forecast.data_source is 'ngenCERF'"
+            msg = "file_paths.fcst_data_file or file_paths.fcst_data_dir must be provided when "
+            msg += "nwm_forecast.data_source is not 'GCS'"
             logger.error(msg)
             raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
     def check_plot_config(self):
-        """Time series and metric_table plots are only applicable if nwm_fcst/data_source is ngenCERF."""
+        """Time series, metric_table, and barchart plots are only applicable if nwm_forecast.data_source is ngenCERF or hindcast."""
         for plot_type in ["time_series", "metric_table", "barchart"]:
             plot_conf = getattr(self.plots, plot_type, None)
             if plot_conf and getattr(plot_conf, "plot", False):
-                if self.nwm_forecast.data_source != "ngenCERF":
-                    msg = f"{plot_type} is only applicable if nwm_forecast.data_source is 'ngenCERF'"
+                if self.nwm_forecast.data_source.lower() not in [
+                    "ngencerf",
+                    "hindcast",
+                ]:
+                    msg = f"{plot_type} is only applicable if nwm_forecast.data_source is 'ngenCERF' or 'hindcast'"
                     logger.error(msg)
                     raise ValueError(msg)
         return self

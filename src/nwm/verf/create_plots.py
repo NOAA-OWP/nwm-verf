@@ -37,7 +37,7 @@ def get_metric_long_name(metrics: list, library: str):
     metrics_long = []
     for m1 in metrics:
         if m1 in dict1.keys():
-            metrics_long = metrics_long + [dict1.get(m1)]
+            metrics_long = metrics_long + [dict1.get(m1).title()]
         else:
             metrics_long = metrics_long + [m1]
 
@@ -49,31 +49,47 @@ def filter_by_lead_metric(
 ):
     """Filter the metric DataFrame by lead times and metrics."""
     # first filter by lead times
-    fc = ForecastConfig(fcst_config_file)
-    leads0, _, _ = fc.interpret_lead_times(conf["lead_times"], nwm_config)
+    lead_times = conf.get("lead_times", [])
+    if lead_times:
+        fc = ForecastConfig(fcst_config_file)
+        leads0, _, _ = fc.interpret_lead_times(lead_times, nwm_config)
 
-    leads = df_metrics["lead_group"].unique()
-    leads1 = [l1 for l1 in leads0 if l1 not in leads]
-    if len(leads1) > 0:
-        raise Exception(f"Lead times {leads1} not found in computed metric results")
+        leads = df_metrics["lead_group"].unique()
+        leads1 = [l1 for l1 in leads0 if l1 not in leads]
+        if len(leads1) > 0:
+            raise Exception(f"Lead times {leads1} not found in computed metric results")
 
-    df_metrics1 = df_metrics[df_metrics["lead_group"].isin(leads0)]
+        df_metrics = df_metrics[df_metrics["lead_group"].isin(leads0)]
 
-    # then fitler by metric
-    mts0 = conf["metric_subset"]
-    mts = df_metrics1["metric"].unique()
-    mts1 = [m1 for m1 in mts0 if m1 not in mts]
-    if len(mts1) > 0:
-        raise Exception(f"Metrics {mts1} not found in computed metric results")
-    df_metrics1 = df_metrics1[df_metrics1["metric"].isin(mts0)]
+    # then filter by metric (if a metric subset is specified in the config)
+    metrics = conf.get("metric_subset", [])
+    if metrics:
+        mts = df_metrics["metric"].unique()
+        mts1 = [m1 for m1 in metrics if m1 not in mts]
+        if len(mts1) > 0:
+            raise Exception(f"Metrics {mts1} not found in computed metric results")
+        df_metrics = df_metrics[df_metrics["metric"].isin(metrics)]
 
-    # sort the data by lead times as shown in the configuratio
-    df_metrics1["lead_group"] = pd.Categorical(
-        df_metrics1["lead_group"].astype(str), categories=leads0, ordered=True
+    # sort the data by lead times in a logical order (e.g., 1, 2, 3, ..., 12, 1-5, 6-10, etc.)
+    def lead_key(x):
+        x = str(x)
+
+        if x.startswith("m"):
+            return (0, float(x[1:]))  # m-values first
+        elif "-" in x:
+            return (2, float(x.split("-")[0]))  # ranges last
+        else:
+            return (1, float(x))  # singles in the middle
+
+    df_metrics["lead_group"] = pd.Categorical(
+        df_metrics["lead_group"].astype(str),
+        categories=sorted(df_metrics["lead_group"].unique(), key=lead_key),
+        ordered=True,
     )
-    df_metrics1 = df_metrics1.sort_values("lead_group")
 
-    return df_metrics1
+    df_metrics = df_metrics.sort_values("lead_group")
+
+    return df_metrics
 
 
 def gather_all_metrics(datasets: list, data_paths: dict):
@@ -128,8 +144,10 @@ def save_plot(
     plt_type: str,
     plt_name: str = None,
     lead: str = None,
+    ref_time: str = None,
     dataset: str = None,
     metric: str = None,
+    location: str = None,
 ) -> Path:
     """Save the plot to a file."""
     fig_dir = Path(data_paths["plots"], plt_type)
@@ -137,33 +155,21 @@ def save_plot(
 
     if not plt_name:
         plt_name = plt_type
-    if plt_type in ["time_series", "barchart", "metric_table"]:
-        file1 = f"{plt_name}_{conf['general']['location_list'][0]}.png"
-    else:
-        if lead and dataset and metric:  # spatial map
-            if str(lead) == "0":
-                file1 = f"{plt_name}_{metric}_{dataset}.png"
-            else:
-                file1 = f"{plt_name}_{metric}_h{lead}_{dataset}.png"
-        elif metric and not lead and not dataset:  # boxplot
-            file1 = f"{plt_name}_{metric}.png"
-        elif metric and lead:  # histogram
-            if str(lead) == "0":
-                file1 = f"{plt_name}_{metric}.png"
-            else:
-                file1 = f"{plt_name}_{metric}_h{lead}.png"
-        else:
-            msg = f"Insufficient information to name the plot file: plt_type={plt_type}, plt_name={plt_name}, "
-            msg += f"lead={lead}, dataset={dataset}, metric={metric}"
-            logger.error(msg)
-            raise ValueError(msg)
 
-    file1 = add_tag_to_filename(conf["plots"][plt_type], file1)
+    fname = f"{plt_name}"
+    fname += f"_{metric}" if metric else ""
+    fname += f"_T0_{ref_time}" if ref_time else ""
+    fname += f"_lead_h{lead}" if lead and lead != "0" else ""
+    fname += f"_{location}" if location else ""
+    fname += f"_{dataset}" if dataset else ""
+    fname += ".png"
+
+    file1 = add_tag_to_filename(conf["plots"][plt_type], fname)
     fig_file = Path(fig_dir, file1)
     plt.savefig(fig_file)
     plt.close()
 
-    return fig_dir
+    return fig_file
 
 
 def group_df_by_location(
@@ -175,24 +181,32 @@ def group_df_by_location(
     return df_inlist, df_outlist
 
 
-def create_spatial_map(conf: dict, data_paths: dict):
-    """Create spatial maps for each dataset, metric, and lead time."""
+def get_metric_dataframe(conf: dict, data_paths: dict, plot_type: str) -> pd.DataFrame:
+    """Get the metric DataFrame by gathering all metrics and then filtering by metric subset and lead times."""
     # gather all metrics calcualted
     datasets = conf["general"]["dataset_name"]
     df_metrics = gather_all_metrics(datasets, data_paths["metrics"])
 
     # filter metric dataframe by lead times and metrics
-    conf1 = conf["plots"]["spatial_map"]
     df_metrics = filter_by_lead_metric(
         df_metrics,
-        conf1,
+        conf["plots"][plot_type],
         conf["general"]["nwm_configuration"],
         conf["file_paths"]["fcst_config_file"],
     )
-    leads = df_metrics["lead_group"].unique()
 
-    # get metric long names
-    metrics = conf1["metric_subset"]
+    # sort by dataset, then metric, then lead times
+    df_metrics = df_metrics.sort_values(by=["dataset", "metric", "lead_group"])
+
+    return df_metrics
+
+
+def create_spatial_map(conf: dict, data_paths: dict):
+    """Create spatial maps for each dataset, metric, and lead time."""
+    # get metric dataframe filtered by metric subset and lead times
+    df_metrics = get_metric_dataframe(conf, data_paths, "spatial_map")
+    leads = df_metrics["lead_group"].unique()
+    metrics = df_metrics["metric"].unique()
     metrics_long = get_metric_long_name(metrics, conf["metrics"]["library"])
 
     # add geometry (lat/lon)
@@ -208,20 +222,21 @@ def create_spatial_map(conf: dict, data_paths: dict):
     gdf_metrics = df_geo.merge(df_metrics, on="primary_location_id", how="inner")
 
     # loop through lead times, metrics, and datasets to create spatial maps
+    conf1 = conf["plots"]["spatial_map"]
     cmap1 = get_metric_colormap(conf1, "map")
     for lead1 in leads:
         for metric1, metric_long in zip(metrics, metrics_long):
-            for case1 in gdf_metrics["dataset"].unique():
+            for dataset in gdf_metrics["dataset"].unique():
                 # filter data based on lead time, metric, and dataset
                 filtered_gdf = gdf_metrics.query(
-                    f"lead_group == '{lead1}' & metric == '{metric1}' & dataset == '{case1}'"
+                    f"lead_group == '{lead1}' & metric == '{metric1}' & dataset == '{dataset}'"
                 )
 
                 # clean the data by removing NaN and infinite values
                 filtered_gdf = clean_data(filtered_gdf, "value")
                 if filtered_gdf.empty:
                     logger.warning(
-                        f"No data available for metric {metric1} at lead time {lead1} for dataset {case1}. "
+                        f"No data available for metric {metric1} at lead time {lead1} for dataset {dataset}. "
                         f"Skipping map creation."
                     )
                     continue
@@ -248,7 +263,7 @@ def create_spatial_map(conf: dict, data_paths: dict):
                 ax.set_title(
                     f"{metric1} ({metric_long}), "
                     f"{'' if lead1 == '0' else f'lead={lead1}h, '}"
-                    f"{case1}",
+                    f"{dataset}",
                     fontsize=16,
                     pad=16,
                 )
@@ -303,15 +318,6 @@ def create_spatial_map(conf: dict, data_paths: dict):
                         label=f"Calibrated(n={gdf_calib['primary_location_id'].nunique()})",
                     )
 
-                    # Add legend outside the plot (to the right)
-                    # ax.legend(
-                    #     loc="upper left",  # anchor point of the legend box
-                    #     bbox_to_anchor=(0.95, 1),  # position relative to axes
-                    #     borderaxespad=0.0,  # no extra padding
-                    #     frameon=True,
-                    #     fontsize=12,
-                    # )
-
                     # Add legend under the colorbar to avoid being clipped
                     ax.legend(
                         loc="upper center",
@@ -338,18 +344,18 @@ def create_spatial_map(conf: dict, data_paths: dict):
                 ax.set_aspect(1.35)
 
                 # save plot to png
-                fig_dir = save_plot(
+                fig_file = save_plot(
                     plt,
                     conf,
                     data_paths,
                     "spatial_map",
                     "map",
-                    str(lead1),
-                    case1,
-                    metric1,
+                    lead=str(lead1),
+                    dataset=dataset,
+                    metric=metric1,
                 )
 
-    logger.info(f"  Spatial maps created at: {fig_dir}")
+    logger.info(f"  Spatial maps created at: {Path(fig_file).parent}")
 
 
 def set_up_figure(df1: pd.DataFrame, df2: pd.DataFrame, plot_type: str = "boxplot"):
@@ -358,11 +364,11 @@ def set_up_figure(df1: pd.DataFrame, df2: pd.DataFrame, plot_type: str = "boxplo
     multi_plot = len(df1) > 0
 
     # Count number of unique groups on x-axis for each subplot
-    n_groups2 = df2["lead_group"].nunique()
-    n_groups1 = df1["lead_group"].nunique()
+    n_groups2 = df2["lead_group"].nunique() if "lead_group" in df2.columns else 0
+    n_groups1 = df1["lead_group"].nunique() if "lead_group" in df1.columns else 0
 
     # number of datasets
-    n_datasets = df2["dataset"].nunique()
+    n_datasets = df2["dataset"].nunique() if "dataset" in df2.columns else 0
 
     if plot_type == "boxplot":
         # Width per category
@@ -432,24 +438,9 @@ def add_shared_legend(fig, axes, dataset_names, palette):
 
 def create_boxplot(conf: dict, data_paths: dict):
     """Create boxplots for each metric in the configuration."""
-    # gather all metrics calcualted
-    datasets = conf["general"]["dataset_name"]
-    df_metrics = gather_all_metrics(datasets, data_paths["metrics"])
-
-    # sort metric dataframe by dataset
-    df_metrics = df_metrics.sort_values(by="dataset")
-
-    # filter metric dataframe by lead times and metrics
-    conf1 = conf["plots"]["boxplot"]
-    df_metrics = filter_by_lead_metric(
-        df_metrics,
-        conf1,
-        conf["general"]["nwm_configuration"],
-        conf["file_paths"]["fcst_config_file"],
-    )
-
-    # get metric long names
-    metrics = conf1["metric_subset"]
+    # get metric dataframe filtered by metric subset and lead times
+    df_metrics = get_metric_dataframe(conf, data_paths, "boxplot")
+    metrics = df_metrics["metric"].unique()
     metrics_long = get_metric_long_name(metrics, conf["metrics"]["library"])
 
     # ensure consistent colors applied to each dataset across metrics
@@ -457,6 +448,7 @@ def create_boxplot(conf: dict, data_paths: dict):
     palette = dict(zip(dataset_names, sns.color_palette("tab10", len(dataset_names))))
 
     # create boxplot for each metric
+    conf1 = conf["plots"]["boxplot"]
     cmap1 = get_metric_colormap(conf1, "boxplot")
     for metric1, metric_long in zip(metrics, metrics_long):
         # filter the data by metric
@@ -546,7 +538,7 @@ def create_boxplot(conf: dict, data_paths: dict):
         add_shared_legend(fig, axes, dataset_names, palette)
 
         # save plot to png
-        fig_dir = save_plot(
+        fig_file = save_plot(
             plt,
             conf,
             data_paths,
@@ -554,33 +546,19 @@ def create_boxplot(conf: dict, data_paths: dict):
             metric=metric1,
         )
 
-    logger.info(f"  Boxplots created at: {fig_dir}")
+    logger.info(f"  Boxplots created at: {Path(fig_file).parent}")
 
 
 def create_histogram(conf: dict, data_paths: dict):
     """Create histograms for each metric in the configuration."""
-    # gather all metrics calculated
-    datasets = conf["general"]["dataset_name"]
-    df_metrics = gather_all_metrics(datasets, data_paths["metrics"])
-
-    # sort metric dataframe by dataset
-    df_metrics = df_metrics.sort_values(by="dataset")
-
-    # filter metric dataframe by lead times and metrics
-    conf1 = conf["plots"]["histogram"]
-    df_metrics = filter_by_lead_metric(
-        df_metrics,
-        conf1,
-        conf["general"]["nwm_configuration"],
-        conf["file_paths"]["fcst_config_file"],
-    )
+    # get metric dataframe filtered by metric subset and lead times
+    df_metrics = get_metric_dataframe(conf, data_paths, "histogram")
     leads = df_metrics["lead_group"].unique()
-
-    # get metric long names
-    metrics = conf1["metric_subset"]
+    metrics = df_metrics["metric"].unique()
     metrics_long = get_metric_long_name(metrics, conf["metrics"]["library"])
 
     # get custom bin edges for the metrics
+    conf1 = conf["plots"]["histogram"]
     custom_bins = get_metric_bins(conf1)
 
     # ensure consistent colors applied to each dataset across metrics
@@ -688,7 +666,7 @@ def create_histogram(conf: dict, data_paths: dict):
             add_shared_legend(fig, axes, dataset_names, palette)
 
             # save plot to png
-            fig_dir = save_plot(
+            fig_file = save_plot(
                 plt,
                 conf,
                 data_paths,
@@ -698,74 +676,36 @@ def create_histogram(conf: dict, data_paths: dict):
                 metric=metric1,
             )
 
-    logger.info(f"  Histograms created at: {fig_dir}")
+    logger.info(f"  Histograms created at: {Path(fig_file).parent}")
 
 
-def create_time_series(conf: dict, data_paths: dict):
-    """Create a time series plot for each dataset in the configuration."""
-    # Load all files and merge on "value_time"
-    merged_df = None
-    for dataset in conf["general"]["dataset_name"]:
-        # get observed data from paired data file
-        file = data_paths["joined"].get(dataset, None)
-        if file is None or not Path(file).exists():
-            msg = f"Paired data file not found for dataset {dataset}: {file}. Cannot create time series plot."
-            logger.warning(msg)
-            continue
-
-        df = pd.read_parquet(file)[["value_time", "primary_value", "measurement_unit"]]
-
-        # get forecast data from forecast data file (because paired data file trimmed forecast data to
-        # the time range of observed data by teehr)
-        fcst_dir = Path(data_paths.get("fcst_link", {}).get(dataset, ""))
-        if not fcst_dir.exists():
-            msg = f"Forecast data directory not found for dataset {dataset}: {fcst_dir}. Cannot create time series plot."
-            logger.error(msg)
-            raise FileNotFoundError(msg)
-
-        parquet_files = list(fcst_dir.glob("*.parquet"))
-        if not parquet_files:
-            msg = f"No parquet files found in {fcst_dir} for dataset {dataset}. Cannot create time series plot."
-            logger.error(msg)
-            raise FileNotFoundError(msg)
-        df_fcst = pd.concat(
-            [pd.read_parquet(f)[["value_time", "value"]] for f in parquet_files],
-            ignore_index=True,
+def plot_time_series(
+    conf: dict,
+    data_paths: dict,
+    df: pd.DataFrame,
+    unit: str,
+    lead: str = None,
+    ref_time: str = None,
+):
+    # lead and ref_time cannot be both not None
+    if lead is not None and ref_time is not None:
+        msg = (
+            "Both lead and reference time are provided for time series plot. "
+            f"Please provide only one of them. lead={lead}, ref_time={ref_time}"
         )
+        logger.error(msg)
+        raise ValueError(msg)
+    lead_ref_str = f"Lead time: {lead}h" if lead else f"Reference time: {ref_time}"
 
-        # merge observed and forecast data on value_time
-        df = pd.merge(df, df_fcst, on="value_time", how="outer")
-
-        unit = (
-            df["measurement_unit"].iloc[0]
-            if not df["measurement_unit"].isnull().all()
-            else None
-        )
-        df.drop(columns=["measurement_unit"], inplace=True)
-        df = df.rename(columns={"value": dataset})
-
-        if merged_df is None:
-            merged_df = df
-        else:
-            merged_df = pd.merge(
-                merged_df,
-                df[["value_time", dataset]],
-                on="value_time",
-            )
-
-    if merged_df is None or merged_df.empty:
-        logger.error("No data available to create time series plot.")
-        return
-
-    # Ensure datetime
-    merged_df["value_time"] = pd.to_datetime(merged_df["value_time"])
+    # sort the data by value_time to avoid zigzag lines
+    df = df.sort_values("value_time")
 
     # Plot
     fig, ax = plt.subplots(figsize=(10, 6))
-    n_points = len(merged_df)
+    n_points = len(df)
     ax.plot(
-        merged_df["value_time"],
-        merged_df["primary_value"],
+        df["value_time"],
+        df["primary_value"],
         label="Observed",
         color="black",
         linewidth=1.2,
@@ -775,36 +715,172 @@ def create_time_series(conf: dict, data_paths: dict):
 
     for dataset in conf["general"]["dataset_name"]:
         ax.plot(
-            merged_df["value_time"],
-            merged_df[dataset],
+            df["value_time"],
+            df[dataset],
             label=dataset,
             marker="o" if n_points < 30 else None,
             linestyle="-" if n_points >= 2 else "None",
         )
 
-    ax.set_xlabel("Time", fontsize=12)
-    ax.set_ylabel(f"Streamflow ({unit})", fontsize=12)
-    ax.set_yticklabels(ax.get_yticklabels(), fontsize=10)
-    ax.set_xticklabels(ax.get_xticklabels(), fontsize=10)
+    ax.set_xlabel("Time", fontsize=14)
+    ax.set_ylabel(f"Streamflow ({unit})", fontsize=14)
+    ax.tick_params(axis="both", labelsize=12)
     ax.set_title(
         f"Simulated vs Observed Streamflow at {conf['general']['location_list'][0]}\n"
-        f"{conf['general']['nwm_configuration']}    T0 = {conf['general']['forecast_start_date'][0]}",
+        f"{conf['general']['nwm_configuration']}    {lead_ref_str}",
         fontsize=14,
+        fontweight="bold",
     )
-    ax.legend(fontsize=10)
+    ax.legend(fontsize=12)
     ax.grid(True)
 
     fig.autofmt_xdate()
 
     # save plot to png
-    fig_dir = save_plot(
+    fig_file = save_plot(
         plt,
         conf,
         data_paths,
         "time_series",
+        lead=lead,
+        ref_time=ref_time,
     )
 
-    logger.info(f"  Time series plots created at: {fig_dir}")
+    return fig_file
+
+
+def get_obs_dataframe(data_paths: dict, dataset: str) -> pd.DataFrame:
+    """Get the observed data DataFrame from the paired data file for a given dataset."""
+    file = data_paths["joined"].get(dataset, None)
+    if file is None or not Path(file).exists():
+        msg = f"Paired data file not found for dataset {dataset}: {file}. Cannot create time series plot."
+        logger.warning(msg)
+        return None
+
+    df_obs = pd.read_parquet(file)[["value_time", "primary_value", "measurement_unit"]]
+    df_obs = df_obs.drop_duplicates()
+    return df_obs
+
+
+def get_fcst_dataframe(data_paths: dict, dataset: str) -> pd.DataFrame:
+    """Get forecast data from forecast data file.
+
+    Because paired data file trimmed forecast data to the time range of observed data by teehr)
+    """
+    fcst_dir = Path(data_paths.get("fcst_link", {}).get(dataset, ""))
+    if not fcst_dir.exists():
+        msg = f"Forecast data directory not found for dataset {dataset}: {fcst_dir}. Cannot create time series plot."
+        logger.error(msg)
+        raise FileNotFoundError(msg)
+
+    parquet_files = list(fcst_dir.glob("*.parquet"))
+    if not parquet_files:
+        msg = f"No parquet files found in {fcst_dir} for dataset {dataset}. Cannot create time series plot."
+        logger.error(msg)
+        raise FileNotFoundError(msg)
+
+    df_fcst = pd.concat(
+        [
+            pd.read_parquet(f)[["value_time", "value", "reference_time"]]
+            for f in parquet_files
+        ],
+        ignore_index=True,
+    )
+
+    # calculate lead time in hours
+    df_fcst["lead_time"] = (
+        (df_fcst["value_time"] - df_fcst["reference_time"])
+        .dt.total_seconds()
+        .div(3600)
+        .round()
+        .astype("Int32")
+    )
+    df_fcst = df_fcst.rename(columns={"value": dataset})
+
+    return df_fcst
+
+
+def create_time_series(conf: dict, data_paths: dict):
+    """Create a time series plot for each dataset in the configuration."""
+    # Load all files and merge on "value_time"
+    merged_df = None
+    for dataset in conf["general"]["dataset_name"]:
+        # observed data
+        df_obs = get_obs_dataframe(data_paths, dataset)
+        unit = (
+            df_obs["measurement_unit"].iloc[0]
+            if not df_obs["measurement_unit"].isnull().all()
+            else None
+        )
+        df_obs.drop(columns=["measurement_unit"], inplace=True)
+
+        # forecast data
+        df_fcst = get_fcst_dataframe(data_paths, dataset)
+
+        # merge observed and forecast data for a given dataset
+        df = pd.merge(df_obs, df_fcst, on="value_time", how="outer")
+
+        # merge data from different datasets
+        if merged_df is None:
+            merged_df = df
+        else:
+            merged_df = pd.merge(
+                merged_df,
+                df[["value_time", "reference_time", "lead_time", dataset]],
+                on=["value_time", "reference_time", "lead_time"],
+            )
+
+    if merged_df is None or merged_df.empty:
+        logger.error("No data available to create time series plot.")
+        return
+
+    # Ensure datetime
+    merged_df["value_time"] = pd.to_datetime(merged_df["value_time"])
+    merged_df["reference_time"] = pd.to_datetime(merged_df["reference_time"])
+
+    # if neither lead times nor reference times are specified in config, use the first reference time in the data
+    lead_times = conf["plots"]["time_series"].get("lead_times", [])
+    ref_times = conf["plots"]["time_series"].get("reference_times", [])
+    if not lead_times and not ref_times:
+        ref_times = merged_df["reference_time"].min()
+        ref_times = [ref_times]
+        logger.info(
+            "No lead times or reference times specified for time series plot; "
+            f"using the earliest reference time {ref_times} in the data."
+        )
+    ref_times = list(pd.to_datetime(ref_times, errors="coerce"))
+
+    fig_file = None
+
+    # Plot time series for each specified lead time
+    if lead_times:
+        logger.info(f"Creating time series plots for lead times: {lead_times}")
+    merged_df["lead_time"] = merged_df["lead_time"].astype(str)
+    for lead in lead_times:
+        df_subset = merged_df[merged_df["lead_time"] == str(lead)]
+        if df_subset.empty:
+            logger.warning(f"No data available for lead time {lead}h. Skipping plot.")
+            continue
+        fig_file = plot_time_series(conf, data_paths, df_subset, unit, lead=str(lead))
+
+    # plot time series for each specified reference time
+    if ref_times:
+        logger.info(
+            f"Creating time series plots for reference times: {[ref.strftime('%Y-%m-%d %H:%M') for ref in ref_times]}"
+        )
+    for ref in ref_times:
+        df_subset = merged_df[merged_df["reference_time"] == ref]
+        if df_subset.empty:
+            logger.warning(
+                f"No data available for reference time {ref}. Skipping plot."
+            )
+            continue
+        fig_file = plot_time_series(
+            conf, data_paths, df_subset, unit, ref_time=ref.strftime("%Y%m%dT%H")
+        )
+
+    if fig_file:
+        logger.info(f"  Time series plots created at: {Path(fig_file).parent}")
 
 
 def get_metric_groups() -> dict:
@@ -832,95 +908,186 @@ def get_metric_groups() -> dict:
 
 def create_metric_table(conf: dict, data_paths: dict):
     """Create a metric table based on the configuration."""
-    # gather all metrics calcualted
-    datasets = conf["general"]["dataset_name"]
-    df_metrics = gather_all_metrics(datasets, data_paths["metrics"])
+    # get metric dataframe filtered by metric subset and lead times
+    df_metrics_all = get_metric_dataframe(conf, data_paths, "metric_table")
+    leads = df_metrics_all["lead_group"].unique()
+    location = df_metrics_all["primary_location_id"].unique()[0]
+    location = location.split("-")[-1]
 
-    # convert long format to wide format
-    df_metrics = df_metrics[["dataset", "metric", "value"]].drop_duplicates()
-    df_metrics.rename(columns={"dataset": "Formulation"}, inplace=True)
-    df_metrics = df_metrics.pivot(
-        index="Formulation", columns="metric", values="value"
-    ).reset_index()
+    # loop through lead times create tables
+    for lead in leads:
+        df_metrics = df_metrics_all[df_metrics_all["lead_group"] == lead]
 
-    metric_groups = get_metric_groups()
-    n_groups = len(metric_groups)
+        # convert long format to wide format
+        df_metrics = df_metrics[["dataset", "metric", "value"]].drop_duplicates()
+        df_metrics.rename(columns={"dataset": "Formulation"}, inplace=True)
+        df_metrics = df_metrics.pivot(
+            index="Formulation", columns="metric", values="value"
+        ).reset_index()
 
-    # Create subplots for each table
-    max_form_len = df_metrics["Formulation"].str.len().max()
-    fig, axes = plt.subplots(
-        n_groups, 1, figsize=(9 + max_form_len * 0.1, 1.2 * n_groups)
-    )
+        metric_groups = get_metric_groups()
+        n_groups = len(metric_groups)
 
-    if n_groups == 1:  # if only one group, axes is not iterable
-        axes = [axes]
-
-    for ax, group in zip(axes, metric_groups.keys()):
-        ax.axis("off")  # hide axis
-
-        # Round values to 2 digits and format large numbers in scientific notation
-        def fmt_value(x):
-            if isinstance(x, (int, float, np.floating)):
-                if abs(x) >= 1e4:
-                    return f"{x:.2e}"  # scientific notation for large numbers
-                else:
-                    return f"{x:.2f}"  # standard float with 2 decimals
-            return x
-
-        cols = ["Formulation"] + metric_groups[group]
-        cols = [c1 for c1 in cols if c1 in df_metrics.columns]
-
-        display_df = df_metrics[cols].copy().applymap(fmt_value)
-        cell_values = display_df.values
-
-        table = ax.table(
-            cellText=cell_values,
-            colLabels=cols,
-            cellLoc="center",
-            loc="center",
+        # Create subplots for each table
+        max_form_len = df_metrics["Formulation"].str.len().max()
+        fig, axes = plt.subplots(
+            n_groups, 1, figsize=(9 + max_form_len * 0.1, 1.2 * n_groups)
         )
 
-        # automatically adjust the column widths
-        table.auto_set_column_width(col=list(range(len(df_metrics.columns))))
+        if n_groups == 1:  # if only one group, axes is not iterable
+            axes = [axes]
 
-        # Header styling
-        for (i, j), cell in table.get_celld().items():
-            if i == 0:  # first row = header
-                cell.set_facecolor("teal")
-                cell.set_text_props(weight="bold", color="white")
+        for ax, group in zip(axes, metric_groups.keys()):
+            ax.axis("off")  # hide axis
 
-        table.auto_set_font_size(False)
-        table.set_fontsize(11)
-        table.scale(1.2, 2.0)
+            # Round values to 2 digits and format large numbers in scientific notation
+            def fmt_value(x):
+                if isinstance(x, (int, float, np.floating)):
+                    if abs(x) >= 1e4:
+                        return f"{x:.2e}"  # scientific notation for large numbers
+                    else:
+                        return f"{x:.2f}"  # standard float with 2 decimals
+                return x
 
-        # Add title above the table
-        ax.set_title(
-            f"{group} Metrics", fontsize=14, pad=8, weight="bold", color="dimgrey"
+            cols = ["Formulation"] + metric_groups[group]
+            cols = [c1 for c1 in cols if c1 in df_metrics.columns]
+
+            # if no metrics in this group, display text and skip table
+            if len(cols) < 2:
+                ax.text(
+                    0.5,
+                    0.5,
+                    f"No {group} metrics to display",
+                    horizontalalignment="center",
+                    verticalalignment="center",
+                    fontsize=12,
+                    color="dimgrey",
+                )
+                continue
+
+            display_df = df_metrics[cols].copy().applymap(fmt_value)
+            cell_values = display_df.values
+
+            table = ax.table(
+                cellText=cell_values,
+                colLabels=cols,
+                cellLoc="center",
+                loc="center",
+            )
+
+            # automatically adjust the column widths
+            table.auto_set_column_width(col=list(range(len(df_metrics.columns))))
+
+            # Header styling
+            for (i, j), cell in table.get_celld().items():
+                if i == 0:  # first row = header
+                    cell.set_facecolor("teal")
+                    cell.set_text_props(weight="bold", color="white")
+
+            table.auto_set_font_size(False)
+            table.set_fontsize(11)
+            table.scale(1.2, 2.0)
+
+            # Add title above the table
+            ax.set_title(
+                f"{group} Metrics", fontsize=14, pad=8, weight="bold", color="dimgrey"
+            )
+
+        # Overall title
+        conf1 = conf["general"]
+        title = f"Metrics for {conf1['location_list'][0]} {conf1['nwm_configuration']} "
+        title += f"(Lead = {lead} hour)"
+        fig.suptitle(title, fontsize=14, fontweight="bold", y=0.98)
+        plt.tight_layout()
+
+        # save plot to png
+        fig_file = save_plot(
+            plt,
+            conf,
+            data_paths,
+            "metric_table",
+            lead=str(lead),
+            location=location,
         )
 
-    # Overall title
-    conf1 = conf["general"]
-    title = f"Metrics for {conf1['location_list'][0]} {conf1['nwm_configuration']} "
-    title += f"(T0 = {conf1['forecast_start_date'][0]})"
-    fig.suptitle(title, fontsize=14, fontweight="bold", y=0.98)
-    plt.tight_layout()
-
-    # save plot to png
-    fig_dir = save_plot(
-        plt,
-        conf,
-        data_paths,
-        "metric_table",
-    )
-
-    logger.info(f"  Metric table plots created at: {fig_dir}")
+    logger.info(f"  Metric table plots created at: {Path(fig_file).parent}")
 
 
 def create_barchart(conf: dict, data_paths: dict):
+    """Create a bar chart comparing datasets for each metric and lead time."""
+    # get metric dataframe filtered by metric subset and lead times
+    df_metrics = get_metric_dataframe(conf, data_paths, "barchart")
+
+    leads = df_metrics["lead_group"].unique()
+    if len(leads) > 1:
+        barchart_by_metric(df_metrics, conf, data_paths)
+    else:
+        barchart_all_metrics(df_metrics, conf, data_paths)
+
+
+def barchart_by_metric(df_metrics: pd.DataFrame, conf: dict, data_paths: dict):
+    """Create a bar chart comparing datasets for each metric and lead time."""
+    # get location ID
+    location = df_metrics["primary_location_id"].unique()[0]
+    location = location.split("-")[-1]
+
+    # plot each metric separately with lead times on x-axis and bars for different datasets
+    metrics = df_metrics["metric"].unique()
+    metrics_long = get_metric_long_name(metrics, conf["metrics"]["library"])
+    for metric, metric_long in zip(metrics, metrics_long):
+        df_m = df_metrics[df_metrics["metric"] == metric]
+
+        # Identify groups
+        lead_times = df_m["lead_group"].unique()
+        datasets = df_m["dataset"].unique()
+
+        n_leads = len(lead_times)
+        n_datasets = len(datasets)
+
+        fig, ax = set_up_figure(pd.DataFrame(), df_m, plot_type="barchart")
+        ax = ax[0]
+
+        # Bar positioning
+        x = range(n_leads)
+        bar_width = 0.8 / n_datasets  # spread bars within each lead-time group
+
+        for i, dataset in enumerate(datasets):
+            df_dataset = df_m[df_m["dataset"] == dataset]
+
+            # Ensure alignment with lead_times
+            values = [
+                df_dataset[df_dataset["lead_group"] == lt]["value"].values[0]
+                if lt in df_dataset["lead_group"].values
+                else 0
+                for lt in lead_times
+            ]
+
+            positions = [xi + i * bar_width for xi in x]
+
+            ax.bar(positions, values, width=bar_width, label=dataset)
+
+        # Formatting
+        ax.set_title(f"{metric_long} by Lead Time ({location})", fontsize=14)
+        ax.set_xticks([xi + bar_width * (n_datasets - 1) / 2 for xi in x])
+        ax.set_xticklabels(lead_times, fontsize=10)
+        ax.set_xlabel("Lead Time (hours)", fontsize=12)
+        ax.set_ylabel(f"{metric} ({metric_long})", fontsize=12)
+        ax.legend(fontsize=12)
+
+        plt.tight_layout()
+
+        fig_file = save_plot(
+            plt, conf, data_paths, "barchart", metric=str(metric), location=location
+        )
+
+    logger.info(f"  Barchart plots created at: {Path(fig_file).parent}")
+
+
+def barchart_all_metrics(df_metrics: pd.DataFrame, conf: dict, data_paths: dict):
     """Create a bar chart comparing datasets for each metric."""
-    # gather all metrics calculated
-    datasets = conf["general"]["dataset_name"]
-    df_metrics = gather_all_metrics(datasets, data_paths["metrics"])
+    # get location ID
+    location = df_metrics["primary_location_id"].unique()[0]
+    location = location.split("-")[-1]
 
     # Get unique datasets and assign colors
     datasets = df_metrics["dataset"].unique()
@@ -985,14 +1152,16 @@ def create_barchart(conf: dict, data_paths: dict):
     plt.tight_layout(rect=[0, 0, 1, 0.92])  # leave space for legend and suptitle
 
     # save plot to png
-    fig_dir = save_plot(
+    fig_file = save_plot(
         plt,
         conf,
         data_paths,
         "barchart",
+        metric="all_metrics",
+        location=location,
     )
 
-    logger.info(f"  Barchart plots created at: {fig_dir}")
+    logger.info(f"  Barchart plots created at: {Path(fig_file).parent}")
 
 
 def create_all_plots(conf: dict, data_paths: dict):
@@ -1021,4 +1190,12 @@ def create_all_plots(conf: dict, data_paths: dict):
     for plot_type, func in plot_functions.items():
         plot_conf = conf["plots"].get(plot_type) or {}
         if plot_conf.get("plot", False):
+            if plot_type != "time_series":
+                for [str, str1] in zip(
+                    ["metric_subset", "lead_times"], ["metrics", "lead times"]
+                ):
+                    if str not in plot_conf or not plot_conf[str]:
+                        logger.warning(
+                            f"{str} not specified for {plot_type} plot. Using all available {str1}."
+                        )
             func(conf, data_paths)

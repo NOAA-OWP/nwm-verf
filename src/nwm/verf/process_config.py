@@ -64,7 +64,6 @@ class ProcessConfig(BaseModel):
 
     def file_required_column_map(self) -> Dict[str, str]:
         """Return a dictionary mapping files to required columns."""
-
         file_dict = {
             "crosswalk_file": {
                 "domain",
@@ -72,7 +71,7 @@ class ProcessConfig(BaseModel):
                 "secondary_location_id",
             },
             "gage_hydrofabric_file": {"primary_location_id", "agency", "geometry"},
-            "fcst_data_file": {"Time", "sim_flow"},
+            # "fcst_data_file": {"Time", "sim_flow"},
             "location_list_file": {},
             "calib_param_file": {"gage_id"},
         }
@@ -271,8 +270,8 @@ class ProcessConfig(BaseModel):
 
         # validate file paths
         exclude_files = set()
-        if self.config.nwm_forecast.data_source not in ["ngenCERF", "ngenSIM"]:
-            exclude_files.add("fcst_data_file")
+        # if self.config.nwm_forecast.data_source not in ["ngenCERF", "ngenSIM"]:
+        #    exclude_files.add("fcst_data_file")
         if self.config.general.location_list or self.config.general.assemble_domain:
             exclude_files.add("location_list_file")
         if not self.config.general.separate_calibrated:
