@@ -57,7 +57,9 @@ def filter_by_lead_metric(
         leads = df_metrics["lead_group"].unique()
         leads1 = [l1 for l1 in leads0 if l1 not in leads]
         if len(leads1) > 0:
-            raise Exception(f"Lead times {leads1} not found in computed metric results")
+            logger.warning(
+                f"Lead times {leads1} not found in computed metric results. Skipping them. Available lead times are: {leads}"
+            )
 
         df_metrics = df_metrics[df_metrics["lead_group"].isin(leads0)]
 
@@ -749,86 +751,118 @@ def plot_time_series(
     return fig_file
 
 
-def get_obs_dataframe(data_paths: dict, dataset: str) -> pd.DataFrame:
-    """Get the observed data DataFrame from the paired data file for a given dataset."""
-    file = data_paths["joined"].get(dataset, None)
-    if file is None or not Path(file).exists():
-        msg = f"Paired data file not found for dataset {dataset}: {file}. Cannot create time series plot."
-        logger.warning(msg)
-        return None
+def get_time_series(
+    data_paths: dict, data_type: str, dataset: str = None
+) -> tuple[pd.DataFrame, str]:
+    """Get forecast or observed time series data (and unit) from forecast or observed data file.
 
-    df_obs = pd.read_parquet(file)[["value_time", "primary_value", "measurement_unit"]]
-    df_obs = df_obs.drop_duplicates()
-    return df_obs
-
-
-def get_fcst_dataframe(data_paths: dict, dataset: str) -> pd.DataFrame:
-    """Get forecast data from forecast data file.
-
-    Because paired data file trimmed forecast data to the time range of observed data by teehr)
+    Cannot use paired data file which has forecast data trimmed to the time range of observed data by teehr)
     """
-    fcst_dir = Path(data_paths.get("fcst_link", {}).get(dataset, ""))
-    if not fcst_dir.exists():
-        msg = f"Forecast data directory not found for dataset {dataset}: {fcst_dir}. Cannot create time series plot."
+    if data_type == "observed":
+        path_str = "obs"
+    elif data_type == "forecast":
+        path_str = "fcst_link"
+        if not dataset:
+            raise ValueError("Dataset name must be provided for forecast data.")
+    else:
+        raise ValueError(
+            f"Invalid data type: {data_type}. Must be 'observed' or 'forecast'."
+        )
+
+    if data_type == "observed":
+        data_dir = Path(data_paths.get(path_str, {}))
+        dataset_str = "observed data"
+    else:
+        data_dir = Path(data_paths.get(path_str, {}).get(dataset, ""))
+        dataset_str = f"dataset {dataset}"
+
+    if not data_dir.exists():
+        msg = f"Data directory not found for {dataset_str}: {data_dir}. Cannot create time series plot."
         logger.error(msg)
         raise FileNotFoundError(msg)
 
-    parquet_files = list(fcst_dir.glob("*.parquet"))
+    parquet_files = list(data_dir.glob("*.parquet"))
     if not parquet_files:
-        msg = f"No parquet files found in {fcst_dir} for dataset {dataset}. Cannot create time series plot."
+        msg = f"No parquet files found in {data_dir} for {dataset_str}. Cannot create time series plot."
         logger.error(msg)
         raise FileNotFoundError(msg)
 
-    df_fcst = pd.concat(
+    df = pd.concat(
         [
-            pd.read_parquet(f)[["value_time", "value", "reference_time"]]
+            pd.read_parquet(f)[
+                ["value_time", "value", "reference_time", "measurement_unit"]
+            ]
             for f in parquet_files
         ],
         ignore_index=True,
     )
 
     # calculate lead time in hours
-    df_fcst["lead_time"] = (
-        (df_fcst["value_time"] - df_fcst["reference_time"])
-        .dt.total_seconds()
-        .div(3600)
-        .round()
-        .astype("Int32")
-    )
-    df_fcst = df_fcst.rename(columns={"value": dataset})
+    if data_type == "forecast":
+        df["lead_time"] = (
+            (df["value_time"] - df["reference_time"])
+            .dt.total_seconds()
+            .div(3600)
+            .round()
+            .astype("Int32")
+        )
+        df = df.rename(columns={"value": dataset})
+    else:
+        df = df.rename(columns={"value": "primary_value"})
 
-    return df_fcst
+    unit = (
+        df["measurement_unit"].iloc[0]
+        if not df["measurement_unit"].isnull().all()
+        else None
+    )
+    df.drop(columns=["measurement_unit"], inplace=True)
+
+    return df, unit
 
 
 def create_time_series(conf: dict, data_paths: dict):
     """Create a time series plot for each dataset in the configuration."""
-    # Load all files and merge on "value_time"
-    merged_df = None
-    for dataset in conf["general"]["dataset_name"]:
-        # observed data
-        df_obs = get_obs_dataframe(data_paths, dataset)
-        unit = (
-            df_obs["measurement_unit"].iloc[0]
-            if not df_obs["measurement_unit"].isnull().all()
-            else None
-        )
-        df_obs.drop(columns=["measurement_unit"], inplace=True)
+    # get observed data (same for all datasets )
+    merged_df, unit_obs = get_time_series(data_paths, "observed")
+    merged_df.drop(columns=["reference_time"], inplace=True)
 
-        # forecast data
-        df_fcst = get_fcst_dataframe(data_paths, dataset)
+    # loop through datasets to get forecast data and merge with observed data
+    datasets = conf["general"]["dataset_name"]
+    for dataset in datasets:
+        df_fcst, unit_fcst = get_time_series(data_paths, "forecast", dataset)
+
+        if unit_obs != unit_fcst:
+            logger.warning(
+                f"Measurement unit mismatch for dataset {dataset}: observed unit is '{unit_obs}' but forecast unit is '{unit_fcst}'. "
+                f"Using observed unit '{unit_obs}' for the plot."
+            )
+
+        # subset forecast based on forecast_start_date and forecast_end_date in config (if specified)
+        df_fcst["reference_time"] = pd.to_datetime(df_fcst["reference_time"])
+        for time1 in ["forecast_start_date", "forecast_end_date"]:
+            fcst_time_list = conf["general"].get(time1)
+            if fcst_time_list:
+                fcst_time = fcst_time_list[datasets.index(dataset)]
+                fcst_time = pd.to_datetime(fcst_time, errors="coerce")
+                if pd.isnull(fcst_time):
+                    logger.warning(
+                        f"Invalid {time1} in config for dataset {dataset}. Ignoring this filter."
+                    )
+                else:
+                    if time1 == "forecast_start_date":
+                        df_fcst = df_fcst[df_fcst["reference_time"] >= fcst_time]
+                    elif time1 == "forecast_end_date":
+                        df_fcst = df_fcst[df_fcst["reference_time"] <= fcst_time]
 
         # merge observed and forecast data for a given dataset
-        df = pd.merge(df_obs, df_fcst, on="value_time", how="outer")
+        cols = ["value_time", "reference_time", "lead_time"]
+        cols_merge = [
+            c1 for c1 in cols if c1 in df_fcst.columns and c1 in merged_df.columns
+        ]
+        cols_fcst = cols + [dataset]
+        cols_fcst = [c1 for c1 in cols_fcst if c1 in df_fcst.columns]
 
-        # merge data from different datasets
-        if merged_df is None:
-            merged_df = df
-        else:
-            merged_df = pd.merge(
-                merged_df,
-                df[["value_time", "reference_time", "lead_time", dataset]],
-                on=["value_time", "reference_time", "lead_time"],
-            )
+        merged_df = pd.merge(merged_df, df_fcst[cols_fcst], on=cols_merge, how="outer")
 
     if merged_df is None or merged_df.empty:
         logger.error("No data available to create time series plot.")
@@ -861,7 +895,9 @@ def create_time_series(conf: dict, data_paths: dict):
         if df_subset.empty:
             logger.warning(f"No data available for lead time {lead}h. Skipping plot.")
             continue
-        fig_file = plot_time_series(conf, data_paths, df_subset, unit, lead=str(lead))
+        fig_file = plot_time_series(
+            conf, data_paths, df_subset, unit_obs, lead=str(lead)
+        )
 
     # plot time series for each specified reference time
     if ref_times:
@@ -876,7 +912,7 @@ def create_time_series(conf: dict, data_paths: dict):
             )
             continue
         fig_file = plot_time_series(
-            conf, data_paths, df_subset, unit, ref_time=ref.strftime("%Y%m%dT%H")
+            conf, data_paths, df_subset, unit_obs, ref_time=ref.strftime("%Y%m%dT%H")
         )
 
     if fig_file:
@@ -1191,11 +1227,11 @@ def create_all_plots(conf: dict, data_paths: dict):
         plot_conf = conf["plots"].get(plot_type) or {}
         if plot_conf.get("plot", False):
             if plot_type != "time_series":
-                for [str, str1] in zip(
+                for [str1, str2] in zip(
                     ["metric_subset", "lead_times"], ["metrics", "lead times"]
                 ):
-                    if str not in plot_conf or not plot_conf[str]:
+                    if str1 not in plot_conf or not plot_conf[str1]:
                         logger.warning(
-                            f"{str} not specified for {plot_type} plot. Using all available {str1}."
+                            f"{str1} not specified for {plot_type} plot. Using all available {str2}."
                         )
             func(conf, data_paths)
