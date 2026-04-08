@@ -1227,11 +1227,11 @@ def create_all_plots(conf: dict, data_paths: dict):
         plot_conf = conf["plots"].get(plot_type) or {}
         if plot_conf.get("plot", False):
             if plot_type != "time_series":
-                for [str, str1] in zip(
+                for [str1, str2] in zip(
                     ["metric_subset", "lead_times"], ["metrics", "lead times"]
                 ):
-                    if str not in plot_conf or not plot_conf[str]:
+                    if str1 not in plot_conf or not plot_conf[str1]:
                         logger.warning(
-                            f"{str} not specified for {plot_type} plot. Using all available {str1}."
+                            f"{str1} not specified for {plot_type} plot. Using all available {str2}."
                         )
             func(conf, data_paths)

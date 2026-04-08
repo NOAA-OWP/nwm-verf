@@ -250,6 +250,29 @@ class ProcessConfig(BaseModel):
 
         return obj
 
+    def check_forecast_period(self):
+        """Check forecast period configuration.
+
+        If forecast_start_date and forecast_end_date are the same and nwm_forecast.data_source is not 'ngenCERF',
+        raise a warning.
+        """
+        if (
+            self.config.nwm_forecast.data_source.lower() != "ngencerf"
+            and self.config.general.forecast_start_date
+            and self.config.general.forecast_end_date
+        ):
+            start_dates = self.config.general.forecast_start_date
+            end_dates = self.config.general.forecast_end_date
+            for dataset in self.config.general.dataset_name:
+                idx = self.config.general.dataset_name.index(dataset)
+                if start_dates[idx] == end_dates[idx]:
+                    logger.warning(
+                        f"Forecast start date and end date are the same for dataset {dataset}. "
+                        "Metrics for individual lead times (e.g., hour 1, 2, 3 etc) cannot be computed, and "
+                        "some plots may not be generated properly."
+                    )
+        return self
+
     def load_and_validate_yaml(self):
         """Load a YAML file and validate its structure using Pydantic."""
         try:
@@ -286,6 +309,9 @@ class ProcessConfig(BaseModel):
 
         # check required columns in files
         self.check_file_columns(paths)
+
+        # check forecast period configuration
+        self.check_forecast_period()
 
         # save file config
         out_file = (

@@ -12,6 +12,9 @@ from nwm.verf import calc_metrics, create_plots, fetch_data, pair_data, settings
 from nwm.verf.identify_location_ids import identify_locations
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - [%(levelname)s] - %(message)s"
+)
 
 
 @contextmanager

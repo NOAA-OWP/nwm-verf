@@ -7,7 +7,10 @@ import pandas as pd
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - [%(levelname)s] - %(message)s"
+)
 
 
 class LocationFilter(BaseModel):
@@ -272,6 +275,35 @@ class Config(BaseModel):
     plots: PlotsConfig
 
     @model_validator(mode="after")
+    def check_dataset_configuration(self):
+        """Check that the following fields has the same lenght as dataset_name.
+
+        Fields include: nwm_version, forecast_start_date, forecast_end_date, eval_start_date, eval_end_date.
+        """
+        dataset_name = self.general.dataset_name
+        nwm_version = self.general.nwm_version
+        forecast_start_date = self.general.forecast_start_date
+        forecast_end_date = self.general.forecast_end_date
+        eval_start_date = self.general.eval_start_date
+        eval_end_date = self.general.eval_end_date
+
+        fields_to_check = {
+            "nwm_version": nwm_version,
+            "forecast_start_date": forecast_start_date,
+            "forecast_end_date": forecast_end_date,
+            "eval_start_date": eval_start_date,
+            "eval_end_date": eval_end_date,
+        }
+
+        for field_name, field_value in fields_to_check.items():
+            if field_value and len(field_value) != len(dataset_name):
+                msg = f"Length of '{field_name} ({len(field_value)})' does not match length of 'dataset_name' ({len(dataset_name)})."
+                logger.error(msg)
+                raise ValueError(msg)
+
+        return self
+
+    @model_validator(mode="after")
     def check_forecast_data_file(self):
         """Make sure forecast data file and/or directory is provided except for GCS."""
         if (
@@ -287,7 +319,11 @@ class Config(BaseModel):
 
     @model_validator(mode="after")
     def check_plot_config(self):
-        """Time series, metric_table, and barchart plots are only applicable if nwm_forecast.data_source is ngenCERF or hindcast."""
+        """Check that plot configurations are compatible with the specified data source.
+
+        Time series, metric_table, and barchart plots are only applicable if nwm_forecast.data_source is ngenCERF or hindcast.
+        Spatial maps, histograms, and boxplots are only applicable if nwm_forecast.data_source is GCS or ngenSIM.
+        """
         for plot_type in ["time_series", "metric_table", "barchart"]:
             plot_conf = getattr(self.plots, plot_type, None)
             if plot_conf and getattr(plot_conf, "plot", False):
@@ -296,6 +332,17 @@ class Config(BaseModel):
                     "hindcast",
                 ]:
                     msg = f"{plot_type} is only applicable if nwm_forecast.data_source is 'ngenCERF' or 'hindcast'"
+                    logger.error(msg)
+                    raise ValueError(msg)
+
+        for plot_type in ["spatial_map", "histogram", "boxplot"]:
+            plot_conf = getattr(self.plots, plot_type, None)
+            if plot_conf and getattr(plot_conf, "plot", False):
+                if self.nwm_forecast.data_source.lower() not in [
+                    "gcs",
+                    "ngensim",
+                ]:
+                    msg = f"{plot_type} is only applicable if nwm_forecast.data_source is 'GCS' or 'ngenSIM'"
                     logger.error(msg)
                     raise ValueError(msg)
         return self
