@@ -145,9 +145,6 @@ class ForecastConfig:
             for l1 in existing_leads
         ]  # ensure all are strings, prepend 'm' for negative leads
 
-        def clean_num_str(s):
-            return str(int(float(s))) if float(s).is_integer() else s
-
         def clean_num(x):
             try:
                 f = float(x)
