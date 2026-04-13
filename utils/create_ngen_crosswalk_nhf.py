@@ -23,7 +23,13 @@ def create_crosswalk(domain: str, vpu: str, out_dir: str | Path) -> gpd.GeoDataF
     """Create crosswalk for a specific VPU."""
     print(f"Creating crosswalk for VPU {vpu}...")
 
-    gpkg_file = Path(f"~/data/hydrofabric/gpkg_nhf/vpu_{vpu}.gpkg").expanduser()
+    if vpu in ["prvi", "hi", "ak"]:
+        gpkg_file = Path(
+            f"~/data/hydrofabric/gpkg_nhf/{vpu}_nhf_1.1.3.gpkg"
+        ).expanduser()
+    else:
+        gpkg_file = Path(f"~/data/hydrofabric/gpkg_nhf/vpu_{vpu}.gpkg").expanduser()
+
     if not gpkg_file.exists():
         print(f"Error: GeoPackage file {gpkg_file} does not exist.")
         return gpd.GeoDataFrame()
@@ -46,8 +52,18 @@ def create_crosswalk(domain: str, vpu: str, out_dir: str | Path) -> gpd.GeoDataF
     gdf_gages["vpu_id"] = vpu
     gdf_gages["domain"] = domain.upper()
 
-    # round basin area and elevation to 2 decimal places
-    gdf_gages["USGS_basin_km2"] = gdf_gages["USGS_basin_km2"].round(2)
+    # identify area column
+    area_col = (
+        "USGS_basin_km2"
+        if "USGS_basin_km2" in gdf_gages.columns
+        else "area_sqkm"
+        if "area_sqkm" in gdf_gages.columns
+        else None
+    )
+    # round basin area to 2 decimal places
+    if area_col:
+        gdf_gages[area_col] = pd.to_numeric(gdf_gages[area_col], errors="coerce")
+        gdf_gages[area_col] = gdf_gages[area_col].round(2)
 
     # rename columns to match crosswalk format
     gdf_gages.rename(
@@ -55,6 +71,7 @@ def create_crosswalk(domain: str, vpu: str, out_dir: str | Path) -> gpd.GeoDataF
             "site_no": "primary_location_id",
             "fp_id": "secondary_location_id",
             "USGS_basin_km2": "basin_area_km2",
+            "area_sqkm": "basin_area_km2",
         },
         inplace=True,
     )
@@ -75,7 +92,7 @@ def create_crosswalk(domain: str, vpu: str, out_dir: str | Path) -> gpd.GeoDataF
     return gdf_gages
 
 
-def plot_gages(gage_file: str | Path):
+def plot_gages(gage_file: str | Path, domain: str = "conus"):
     """Plot gages in the crosswalk file for a specific domain."""
     # Read the GeoDataFrame
     gage_file = Path(gage_file).expanduser()
@@ -85,7 +102,19 @@ def plot_gages(gage_file: str | Path):
     gdf_gages = gdf_gages.to_crs(epsg=3857)
 
     # Desired status order
-    status_order = ["USGS-discontinued", "USGS-active", "CADWR_ENVCA", "TXDOT", "-"]
+    status_order = [
+        "USGS-discontinued",
+        "USGS-active",
+        "CADWR_ENVCA",
+        "TXDOT",
+        "routelink",
+        "-",
+    ]
+
+    # Filter to statyus_order to only includes those statuses that are actually present in the data
+    status_order = [
+        status for status in status_order if status in gdf_gages["status"].unique()
+    ]
 
     # Compute counts
     status_counts = gdf_gages["status"].value_counts()
@@ -113,8 +142,8 @@ def plot_gages(gage_file: str | Path):
         ax=ax,
         column="status_labeled",
         categorical=True,
-        markersize=5,
-        marker="x",
+        markersize=8,
+        marker="o",
         legend=True,
     )
 
@@ -131,7 +160,7 @@ def plot_gages(gage_file: str | Path):
     ax.set_yticks([])
 
     # Add title
-    ax.set_title("NHF Gages by Status", fontsize=16)
+    ax.set_title(f"NHF Gages by Status in {domain.upper()}", fontsize=16)
 
     # Add basemap
     cx.add_basemap(ax, source=cx.providers.CartoDB.Positron)
@@ -211,11 +240,15 @@ def main(domain: str = "conus", out_dir: str | Path = ".") -> Path:
 
     # add prefix "ngen-" to secondary_location_id
     gdf_cwt["secondary_location_id"] = gdf_cwt["secondary_location_id"].apply(
-        lambda x: "ngen-" + str(int(x))
+        lambda x: f"ngen-{int(x)}" if pd.notna(x) else None
     )
 
-    # create gage list for each VPU (commented out here since now location_filter can be used to filter gages)
-    # create_gage_list(gdf_cwt, out_dir, domain)
+    # remove rows where primary_location_id or secondary_location_id is missing or empty after formatting
+    gdf_cwt = gdf_cwt.dropna(subset=["primary_location_id", "secondary_location_id"])
+    gdf_cwt = gdf_cwt[
+        (gdf_cwt["primary_location_id"] != "")
+        & (gdf_cwt["secondary_location_id"] != "")
+    ]
 
     # Save the crosswalk GeoDataFrame to Parquet
     cwt_file = Path(out_dir) / f"usgs_ngen_crosswalk_{domain}.parquet"
@@ -266,8 +299,11 @@ if __name__ == "__main__":
     # create crosswalk file for all gages and save to output directory
     cwt_file = main(args.domain, args.out_dir)
 
-    print("Checking if all TxDOT gages are included in the crosswalk file...")
-    check_gages_in_crosswalk(cwt_file, default_txdot_gage_list, "TxDOT", args.domain)
+    if args.domain.lower() == "conus":
+        print("Checking if all TxDOT gages are included in the crosswalk file...")
+        check_gages_in_crosswalk(
+            cwt_file, default_txdot_gage_list, "TxDOT", args.domain
+        )
 
     print(
         "Checking if all calibratable headwater gages are included in the crosswalk file..."
@@ -283,4 +319,4 @@ if __name__ == "__main__":
     )
 
     print("Plotting gages in the crosswalk file on spatial map...")
-    plot_gages(cwt_file)
+    plot_gages(cwt_file, args.domain)

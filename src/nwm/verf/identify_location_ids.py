@@ -241,7 +241,7 @@ def get_usgs_gage_ids(conf: dict) -> list:
                         logger.error(msg)
                         raise ValueError(msg)
 
-            # Apply filters
+            # Apply filters (rows with missing values in filter columns will be excluded)
             for column, value in zip(normalized_columns, values):
                 df = df[df[column] == value]
 
