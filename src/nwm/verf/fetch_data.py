@@ -587,7 +587,7 @@ def retrieve_fcsts_ngencerf(locations: dict, conf: dict, data_paths: dict):
                 }
             )
             if len(loc_fcst_list) == 0:
-                msg = "No secondary_location_id found in locations for forecast data. Verification cannot proceed."
+                msg = f"No secondary_location_id ({locations[dataset]['secondary']}) found in locations for forecast data. Verification cannot proceed."
                 logger.error(msg)
                 raise ValueError(msg)
             if len(loc_fcst_list) > 1:
