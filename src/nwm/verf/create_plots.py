@@ -1231,7 +1231,7 @@ def create_all_plots(conf: dict, data_paths: dict):
                     ["metric_subset", "lead_times"], ["metrics", "lead times"]
                 ):
                     if str1 not in plot_conf or not plot_conf[str1]:
-                        logger.warning(
+                        logger.info(
                             f"{str1} not specified for {plot_type} plot. Using all available {str2}."
                         )
             func(conf, data_paths)

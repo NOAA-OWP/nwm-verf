@@ -293,11 +293,20 @@ def identify_locations(conf: dict) -> dict:
             "hindcast",
         ]:
             logger.warning(
-                f"  More than one locations are found for dataset {dataset} based on the provided location_list and crosswalk file. "
+                f"  More than one location is found for dataset {dataset} based on the provided location_list "
+                f"{conf['general']['location_list']} and crosswalk file {conf['file_paths']['crosswalk_file'][nwm_version]}. "
                 f"Only the first location will be used for verification of this dataset."
             )
             locations_nwm1 = locations_nwm1[:1]
             locations_usgs1 = locations_usgs1[:1]
+
+        if len(locations_usgs1) == 0 or len(locations_nwm1) == 0:
+            msg = (
+                f"  No gage ID is found for dataset {dataset} based on the provided location_list "
+                f"{conf['general']['location_list']} and crosswalk file {conf['file_paths']['crosswalk_file'][nwm_version]}."
+            )
+            logger.error(msg)
+            raise ValueError(msg)
 
         locations[dataset] = {"primary": locations_usgs1, "secondary": locations_nwm1}
 

@@ -587,7 +587,7 @@ def retrieve_fcsts_ngencerf(locations: dict, conf: dict, data_paths: dict):
                 }
             )
             if len(loc_fcst_list) == 0:
-                msg = "No secondary_location_id found in locations for forecast data. Verification cannot proceed."
+                msg = f"No secondary_location_id ({locations[dataset]['secondary']}) found in locations for forecast data. Verification cannot proceed."
                 logger.error(msg)
                 raise ValueError(msg)
             if len(loc_fcst_list) > 1:
@@ -767,8 +767,11 @@ def extract_flow_for_gages(
     # define feature_ids based on the secondary ids in locations
     feature_ids = [int(x.replace("ngen-", "")) for x in locations["secondary"]]
 
+    # keep only feature_ids that are present in the NetCDF file
+    valid_ids = list(set(feature_ids) & set(ds.coords["feature_id"].values))
+
     # Flow is [time, feature_id]
-    flow_data = ds[flow_var].sel({feature_id_var: feature_ids})
+    flow_data = ds[flow_var].sel({feature_id_var: valid_ids})
 
     # Convert to DataFrame
     df = flow_data.to_dataframe().reset_index()

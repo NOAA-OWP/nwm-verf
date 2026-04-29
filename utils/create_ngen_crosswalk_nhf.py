@@ -13,23 +13,21 @@ from nwm.verf.settings import conus_vpu_list, default_txdot_gage_list
 
 ALL_VPUS = {
     "conus": conus_vpu_list,
-    "prvi": ["prvi"],
-    "hi": ["hi"],
-    "ak": ["ak"],
+    "prvi": ["21"],
+    "hi": ["20"],
+    "ak": ["19"],
 }
 
 
-def create_crosswalk(domain: str, vpu: str, out_dir: str | Path) -> gpd.GeoDataFrame:
+def create_crosswalk(
+    domain: str, vpu: str, out_dir: str | Path, area_col: str = "USGS_basin_km2"
+) -> gpd.GeoDataFrame:
     """Create crosswalk for a specific VPU."""
     print(f"Creating crosswalk for VPU {vpu}...")
 
-    if vpu in ["prvi", "hi", "ak"]:
-        gpkg_file = Path(
-            f"~/data/hydrofabric/gpkg_nhf/{vpu}_nhf_1.1.3.gpkg"
-        ).expanduser()
-    else:
-        gpkg_file = Path(f"~/data/hydrofabric/gpkg_nhf/vpu_{vpu}.gpkg").expanduser()
-
+    gpkg_file = Path(
+        f"~/run_region/region_input/hydrofabric/gpkg_nhf/vpu_{vpu}.gpkg"
+    ).expanduser()
     if not gpkg_file.exists():
         print(f"Error: GeoPackage file {gpkg_file} does not exist.")
         return gpd.GeoDataFrame()
@@ -44,34 +42,24 @@ def create_crosswalk(domain: str, vpu: str, out_dir: str | Path) -> gpd.GeoDataF
 
     # read gages layer
     gdf_gages = gpd.read_file(gpkg_file, layer="gages")
-    gdf_gages = gdf_gages[
-        ["site_no", "fp_id", "USGS_basin_km2", "status", "geometry"]
-    ].copy()
+    cols = ["site_no", "fp_id", area_col, "status", "geometry"]
+    cols = [c for c in cols if c in gdf_gages.columns]
+    gdf_gages = gdf_gages[cols].copy()
 
     # add vpu_id  and domain columns
     gdf_gages["vpu_id"] = vpu
     gdf_gages["domain"] = domain.upper()
 
-    # identify area column
-    area_col = (
-        "USGS_basin_km2"
-        if "USGS_basin_km2" in gdf_gages.columns
-        else "area_sqkm"
-        if "area_sqkm" in gdf_gages.columns
-        else None
-    )
-    # round basin area to 2 decimal places
-    if area_col:
-        gdf_gages[area_col] = pd.to_numeric(gdf_gages[area_col], errors="coerce")
-        gdf_gages[area_col] = gdf_gages[area_col].round(2)
+    # round basin area and elevation to 2 decimal places
+    if area_col in gdf_gages.columns:
+        gdf_gages[area_col] = gdf_gages[area_col].astype(float).round(2)
 
     # rename columns to match crosswalk format
     gdf_gages.rename(
         columns={
             "site_no": "primary_location_id",
             "fp_id": "secondary_location_id",
-            "USGS_basin_km2": "basin_area_km2",
-            "area_sqkm": "basin_area_km2",
+            area_col: "basin_area_km2",
         },
         inplace=True,
     )
@@ -88,6 +76,9 @@ def create_crosswalk(domain: str, vpu: str, out_dir: str | Path) -> gpd.GeoDataF
             "geometry",
         ]
     ]
+
+    # reproject to EPSG:4326
+    gdf_gages = gdf_gages.to_crs(epsg=4326)
 
     return gdf_gages
 
@@ -219,7 +210,11 @@ def main(domain: str = "conus", out_dir: str | Path = ".") -> Path:
         exit(1)
 
     # loop through unique VPUs to create a crosswalk for each VPU in the domain
-    gdfs = [create_crosswalk(domain, vpu, out_dir) for vpu in ALL_VPUS[domain.lower()]]
+    area_col = "USGS_basin_km2"
+    gdfs = [
+        create_crosswalk(domain, vpu, out_dir, area_col)
+        for vpu in ALL_VPUS[domain.lower()]
+    ]
     gdfs = [gdf for gdf in gdfs if not gdf.empty]
 
     if not gdfs:
