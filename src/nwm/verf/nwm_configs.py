@@ -141,16 +141,52 @@ class ForecastConfig:
             existing_leads = [l1 for l1 in all_leads if l1 in leads]
 
         existing_leads = [
-            str(l1) if l1 >= 0 else "m" + str(abs(l1)) for l1 in existing_leads
+            str(round(l1, 2)) if l1 >= 0 else "m" + str(round(abs(l1), 2))
+            for l1 in existing_leads
         ]  # ensure all are strings, prepend 'm' for negative leads
 
-        if "all" in lead_times:
-            lead_times = [str(i) for i in existing_leads] + [
-                x for x in lead_times if x != "all"
-            ]
-        elif "all_aggregated" in lead_times:
-            lead_times = [str(existing_leads[0]) + "-" + str(existing_leads[-1])] + [
-                x for x in lead_times if x != "all_aggregated"
-            ]
+        def clean_num(x):
+            try:
+                f = float(x)
+            except (ValueError, TypeError):
+                msg = f"Invalid lead time value: {x!r}. Must be numerical or a string representing a number."
+                logger.error(msg)
+                raise ValueError(msg)
+            return f"{f:g}"
+
+        existing_leads = [clean_num(l1) for l1 in existing_leads]
+
+        interpreted_leads = []
+
+        for lt in lead_times:
+            if lt == "all":
+                interpreted_leads.extend(existing_leads)
+            elif lt == "all_aggregated":
+                if existing_leads:
+                    interpreted_leads.append(
+                        f"{existing_leads[0]}-{existing_leads[-1]}"
+                    )
+            elif "-" in lt:  # range like "1-5"
+                start_str, end_str = lt.split("-")
+                start = clean_num(start_str)
+                end = clean_num(end_str)
+                if start not in existing_leads or end not in existing_leads:
+                    logger.warning(
+                        f"Lead time range '{lt}' has start or end not in existing leads {existing_leads}. Skip this lead time."
+                    )
+                else:
+                    interpreted_leads.append(f"{start}-{end}")
+
+            else:  # single lead time
+                lt_clean = clean_num(lt)
+                if lt_clean in existing_leads:
+                    interpreted_leads.append(lt_clean)
+                else:
+                    logger.info(
+                        f"Lead time '{lt_clean}' not found in existing leads {existing_leads}. Skip this lead time."
+                    )
+
+        # remove duplicated lead times while preserving order
+        lead_times = list(dict.fromkeys(interpreted_leads))
 
         return lead_times, missing_leads, timestep

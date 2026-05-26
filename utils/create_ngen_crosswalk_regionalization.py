@@ -8,36 +8,59 @@ import geopandas as gpd
 
 def main(domain: str = "conus", out_dir: str | Path = "."):
     """Create ngen divide crosswalk for all gages for regionalization evaluation."""
-    # Input GeoPackage (mount the s3 bucket with: s3fs hydrofabric-data ~/s3/hydrofabric-data)
-    conus_in = Path(
-        f"~/s3/hydrofabric-data/patch/7_30_25/nwm_patch_{domain}_nextgen.gpkg"
-    ).expanduser()
+    if domain.lower() == "conus":
+        # Input GeoPackage (mount the s3 bucket with: s3fs hydrofabric-data ~/s3/hydrofabric-data)
+        gpkg_file = Path(
+            f"~/s3/hydrofabric-data/patch/7_30_25/nwm_patch_{domain}_nextgen.gpkg"
+        ).expanduser()
+    elif domain.lower() in ["prvi", "hi", "ak"]:
+        gpkg_file = Path(
+            f"~/repos/nwm-region-mgr/data/inputs/region/hydrofabric/gpkg_vpu/vpu_{domain.lower()}.gpkg"
+        ).expanduser()
+    else:
+        print(
+            f"Unsupported domain: {domain}. Supported domains are: conus, prvi, hi, ak."
+        )
+        exit(1)
 
-    print(f"Reading hydrolocations from {conus_in}...")
-    gdf = gpd.read_file(conus_in, layer="hydrolocations")
+    print(f"Reading hydrolocations from {gpkg_file}...")
+    gdf = gpd.read_file(gpkg_file, layer="hydrolocations")
 
     # Select required columns
     df_cwt = gdf[["id", "hl_uri", "vpuid"]].copy()
 
-    # Keep only rows with hl_uri starting with 'gages-'
-    df_cwt = df_cwt[df_cwt["hl_uri"].str.startswith("gages-")].copy()
+    # first remove rows with hl_uri being NaN or empty string
+    df_cwt = df_cwt[df_cwt["hl_uri"].notna() & (df_cwt["hl_uri"] != "")].copy()
 
-    print(f"Reading divides from {conus_in}...")
-    gdf_divides = gpd.read_file(conus_in, layer="divides")[["id", "geometry"]]
+    # Keep only rows with hl_uri starting with 'gages-' or "Gages-"
+    df_cwt = df_cwt[df_cwt["hl_uri"].str.startswith(("gages-", "Gages-"))].copy()
+
+    # convert Gages to gages in hl_uri
+    df_cwt["hl_uri"] = df_cwt["hl_uri"].str.replace("Gages-", "gages-", regex=False)
+
+    print(f"Reading divides from {gpkg_file}...")
+    gdf_divides = gpd.read_file(gpkg_file, layer="divides")[["id", "geometry"]]
 
     print("Merging crosswalk with divide geometries...")
     df_cwt = df_cwt.merge(gdf_divides, on="id", how="left")
     gdf_cwt = gpd.GeoDataFrame(df_cwt, geometry="geometry", crs=gdf_divides.crs)
 
     print("Converting divide polygons to points with centroids...")
-    gdf_cwt["centroid"] = gdf_cwt.geometry.centroid
+
+    # Reproject to projected CRS
+    gdf_proj = gdf_cwt.to_crs("EPSG:5070")
+
+    # Compute centroid in meters
+    gdf_cwt["centroid"] = gdf_proj.geometry.centroid
+
+    # Reproject centroids to WGS84 lat/lon and create point geometries
+    gdf_cwt["centroid"] = gpd.GeoSeries(gdf_cwt["centroid"], crs="EPSG:5070").to_crs(
+        epsg=4326
+    )
     gdf_cwt["geometry"] = gpd.points_from_xy(
         gdf_cwt["centroid"].x, gdf_cwt["centroid"].y, crs=gdf_cwt.crs
     )
     gdf_cwt = gdf_cwt.drop(columns=["centroid"])
-
-    # Reproject to WGS84 (lat/lon)
-    gdf_cwt = gdf_cwt.to_crs(epsg=4326)
 
     # Replace prefixes to make location IDs
     gdf_cwt["secondary_location_id"] = gdf_cwt["id"].str.replace(
@@ -80,7 +103,9 @@ def main(domain: str = "conus", out_dir: str | Path = "."):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create crosswalk for all gages.")
     parser.add_argument(
-        "--out_dir", required=True, help="Output directory for the crosswalk files"
+        "--out_dir",
+        default=Path("~/repos/nwm-verf/data/inputs/regionalization").expanduser(),
+        help="Output directory for the crosswalk files",
     )
     parser.add_argument(
         "--domain",

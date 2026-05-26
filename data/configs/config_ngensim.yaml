@@ -10,6 +10,11 @@ general:
   assemble_domain: false # whether to assemble metrics from various VPUs for the entire domain and plot domain-level metrics
   location_set_name: vpu_03S  # user-specified name for the set of locations
   location_type: usgs_gage # location type
+  location_filter: # filter locations based on column and value in the gage crosswalk file; if null, all locations in the crosswalk file will be used, unless location_list or location_list_file is specified
+    columns: ["vpuid"] 
+    values: ["03S"]  
+    #columns: ["vpu_id", "status"]  # NHF
+    #values: ["03S", "USGS-active"] # NHF
   variable_name: streamflow # currently only 'streamflow' is supported
   nwm_configuration: ngen_simulation    
   dataset_name: [gower, kmeans] # user-specified name of datasets (e.g., formualtion or algorithm name)
@@ -23,7 +28,7 @@ general:
 #### configurations for various file paths
 file_paths:
   base_dir: /ngen-app/nwm-verf/data/ # root directory to store data/outputs for verification
-  location_list_file: '{base_dir}/inputs/regionalization/gage_list_conus_{location_set_name}.csv' # text file containing list of usgs gage IDs (one gage ID per line)
+  #location_list_file: '{base_dir}/inputs/regionalization/gage_list_conus_{location_set_name}.csv' # text file containing list of usgs gage IDs (one gage ID per line)
   #gage_hydrofabric_file: '{base_dir}/inputs/gage_files/gage_hydrofabric_all_domains.parquet' # gage hydrofabric file (including geometry)
   crosswalk_file: '{base_dir}/inputs/regionalization/usgs_{nwm_version}_crosswalk_{domain}.parquet' # crosswalk file mapping gage IDs to NWM/ngen link IDs
   fcst_data_file: '/ngen-app/nwm-region-mgr/data/outputs/ngen/regionalization/{dataset_name}/{location_set_name}/Output/troute_output_{forecast_start_date}.nc' # forecast data directory (must be specified when nwm_forecast.data_source is set to ngenCERF)

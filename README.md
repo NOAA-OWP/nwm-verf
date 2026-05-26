@@ -54,7 +54,8 @@ where [NWM_EVAL_ROOT], [NWM_VERF_ROOT], [VENV_ROOT] refer to the directory to in
 Follow the sample config file (nwm-verf/data/configs) to set up the configurations for your verification application.
 - For verifying ngeCERF forecasts, use: config_ngencerf.yaml 
 - For verifying NWM v30 forecasts, use: config_nwm.yaml
-- For evaluating NGEN simulations, use: config_ngensim.yaml
+- For evaluating regionalized NGEN simulations, use: config_ngensim.yaml
+- For verifying hindcast simulations, use: config_hindcast.yaml
 
 2) run verification/evaluation
 

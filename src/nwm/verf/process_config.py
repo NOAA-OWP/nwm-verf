@@ -64,7 +64,6 @@ class ProcessConfig(BaseModel):
 
     def file_required_column_map(self) -> Dict[str, str]:
         """Return a dictionary mapping files to required columns."""
-
         file_dict = {
             "crosswalk_file": {
                 "domain",
@@ -72,7 +71,7 @@ class ProcessConfig(BaseModel):
                 "secondary_location_id",
             },
             "gage_hydrofabric_file": {"primary_location_id", "agency", "geometry"},
-            "fcst_data_file": {"Time", "sim_flow"},
+            # "fcst_data_file": {"Time", "sim_flow"},
             "location_list_file": {},
             "calib_param_file": {"gage_id"},
         }
@@ -251,6 +250,29 @@ class ProcessConfig(BaseModel):
 
         return obj
 
+    def check_forecast_period(self):
+        """Check forecast period configuration.
+
+        If forecast_start_date and forecast_end_date are the same and nwm_forecast.data_source is not 'ngenCERF',
+        raise a warning.
+        """
+        if (
+            self.config.nwm_forecast.data_source.lower() != "ngencerf"
+            and self.config.general.forecast_start_date
+            and self.config.general.forecast_end_date
+        ):
+            start_dates = self.config.general.forecast_start_date
+            end_dates = self.config.general.forecast_end_date
+            for dataset in self.config.general.dataset_name:
+                idx = self.config.general.dataset_name.index(dataset)
+                if start_dates[idx] == end_dates[idx]:
+                    logger.warning(
+                        f"Forecast start date and end date are the same for dataset {dataset}. "
+                        "Metrics for individual lead times (e.g., hour 1, 2, 3 etc) cannot be computed, and "
+                        "some plots may not be generated properly."
+                    )
+        return self
+
     def load_and_validate_yaml(self):
         """Load a YAML file and validate its structure using Pydantic."""
         try:
@@ -271,8 +293,8 @@ class ProcessConfig(BaseModel):
 
         # validate file paths
         exclude_files = set()
-        if self.config.nwm_forecast.data_source not in ["ngenCERF", "ngenSIM"]:
-            exclude_files.add("fcst_data_file")
+        # if self.config.nwm_forecast.data_source not in ["ngenCERF", "ngenSIM"]:
+        #    exclude_files.add("fcst_data_file")
         if self.config.general.location_list or self.config.general.assemble_domain:
             exclude_files.add("location_list_file")
         if not self.config.general.separate_calibrated:
@@ -287,6 +309,9 @@ class ProcessConfig(BaseModel):
 
         # check required columns in files
         self.check_file_columns(paths)
+
+        # check forecast period configuration
+        self.check_forecast_period()
 
         # save file config
         out_file = (
