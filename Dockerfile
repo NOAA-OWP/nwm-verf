@@ -1,6 +1,31 @@
-## TODO: replace with base image created under NGWPC-3223 ##
-## see: https://jira.nextgenwaterprediction.com/browse/NGWPC-3223
-FROM rockylinux:8
+ARG BASE_REPO=rockylinux
+ARG BASE_TAG=8
+
+FROM ${BASE_REPO}:${BASE_TAG}
+
+# OCI Metadata Arguments
+ARG BASE_REPO
+ARG BASE_TAG
+ARG BASE_NAME="${BASE_REPO}:${BASE_TAG}"
+ARG BASE_DIGEST="unknown"
+ARG BASE_REVISION="unknown"
+ARG IMAGE_SOURCE="unknown"
+ARG IMAGE_VENDOR="unknown"
+ARG IMAGE_VERSION="unknown"
+ARG IMAGE_REVISION="unknown"
+ARG IMAGE_CREATED="unknown"
+
+# OCI Standard Labels
+LABEL org.opencontainers.image.base.name="${BASE_NAME}" \
+    org.opencontainers.image.base.digest="${BASE_DIGEST}" \
+    io.ngwpc.image.base.revision="${BASE_REVISION}" \
+    org.opencontainers.image.source="${IMAGE_SOURCE}" \
+    org.opencontainers.image.vendor="${IMAGE_VENDOR}" \
+    org.opencontainers.image.version="${IMAGE_VERSION}" \
+    org.opencontainers.image.revision="${IMAGE_REVISION}" \
+    org.opencontainers.image.created="${IMAGE_CREATED}" \
+    org.opencontainers.image.title="NWM Verification" \
+    org.opencontainers.image.description="Docker image for the NWM verification application"
 
 
 # ensure local python is preferred over distribution python
@@ -29,15 +54,16 @@ RUN set -eux; \
         gcc-toolset-10-libasan-devel \
         libasan6 \
         libffi libffi-devel \
-        m4 \ 
+        m4 \
         openssl openssl-devel \
         rsync \
         sqlite sqlite-devel \
         tk tk-devel \
-        uuid uuid-devel \ 
-        which \ 
+        uuid uuid-devel \
+        which \
         xz \
         zlib zlib-devel \
+        jq \
     ; \
     dnf clean all
 
@@ -103,37 +129,53 @@ RUN set -eux; \
 		ln -svT "$src" "/usr/local/bin/$dst"; \
 	done
 
-RUN --mount=type=secret,id=GITLAB_TOKEN \ 
-    set -eux; \
-    \
-    git config --global url."https://oauth2:$(cat /run/secrets/GITLAB_TOKEN)@gitlab.sh.nextgenwaterprediction.com/".insteadOf "https://gitlab.sh.nextgenwaterprediction.com/"
 
-ENV VIRTUAL_ENV=/ngen-app/ngen-verf-python
+ENV VIRTUAL_ENV=/ngen-app/nwm-verf-python
 RUN set -eux; \
         \
         python3.10 -m venv ${VIRTUAL_ENV}
 ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
 
-ARG NGEN_EVAL_TAG=development
+ARG NWM_EVAL_MGR_REF=development
 RUN set -eux; \
 	\
-    pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-eval.git@${NGEN_EVAL_TAG}#egg=ngen_eval" ; \
+    pip3 install "git+https://github.com/NGWPC/nwm-eval-mgr.git@${NWM_EVAL_MGR_REF}" ; \
     pip3 cache purge
 
-COPY . /ngen-app/ngen-verf/
-WORKDIR /ngen-app/ngen-verf/
+COPY . /ngen-app/nwm-verf/
+WORKDIR /ngen-app/nwm-verf/
 RUN set -eux; \
 	\
     pip3 install . ; \
     pip3 cache purge
 
-COPY ./docker/run-ngen-verf.sh /ngen-app/bin/
+COPY ./docker/run-nwm-verf.sh /ngen-app/bin/
 RUN set -eux; \
 	\
-    chmod +x /ngen-app/bin/run-ngen-verf.sh
+    chmod +x /ngen-app/bin/run-nwm-verf.sh
+
+ARG CI_COMMIT_REF_NAME
+
+RUN set -eux; \
+    repo_url=$(git config --get remote.origin.url); \
+    key=${repo_url##*/}; \
+    key=${key%.git}; \
+    GIT_INFO_PATH="/ngen-app/${key}_git_info.json"; \
+    branch=$( [ -n "${CI_COMMIT_REF_NAME:-}" ] && echo "${CI_COMMIT_REF_NAME}" || git rev-parse --abbrev-ref HEAD ); \
+    jq -n \
+      --arg commit_hash "$(git rev-parse HEAD)" \
+      --arg branch "$branch" \
+      --arg tags "$(git tag --points-at HEAD | tr '\n' ' ')" \
+      --arg author "$(git log -1 --pretty=format:'%an')" \
+      --arg commit_date "$(date -u -d @$(git log -1 --pretty=format:'%ct') +'%Y-%m-%d %H:%M:%S UTC')" \
+      --arg message "$(git log -1 --pretty=format:'%s' | tr '\n' ';')" \
+      --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
+      "{\"$key\": {commit_hash: \$commit_hash, branch: \$branch, tags: \$tags, author: \$author, commit_date: \$commit_date, message: \$message, build_date: \$build_date}}" \
+      > $GIT_INFO_PATH
+
 
 WORKDIR /
 SHELL ["/bin/bash", "-c"]
 
-ENTRYPOINT [ "/ngen-app/bin/run-ngen-verf.sh" ] 
+ENTRYPOINT [ "/ngen-app/bin/run-nwm-verf.sh" ]
 CMD [ "--help" ]
